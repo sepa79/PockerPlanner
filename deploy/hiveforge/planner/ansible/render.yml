@@ -7,6 +7,8 @@
     planner_port: "{{ lookup('env', 'POCKERPLANNER_PORT') }}"
     planner_node: "{{ lookup('env', 'POCKERPLANNER_NODE') }}"
     planner_auth_base: "{{ lookup('env', 'POCKETHIVE_AUTH_BASE_URL') }}"
+    planner_mcp_hosts: "{{ lookup('env', 'POCKERPLANNER_MCP_ALLOWED_HOSTS') }}"
+    planner_mcp_origins: "{{ lookup('env', 'POCKERPLANNER_MCP_ALLOWED_ORIGINS') }}"
 
 - name: Require supported profile and explicit configuration
   ansible.builtin.assert:

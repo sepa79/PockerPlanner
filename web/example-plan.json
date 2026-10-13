@@ -28,6 +28,7 @@
           "name": "Example activity",
           "start": "2026-01-01",
           "durationDays": 2,
+          "includeWeekends": false,
           "progress": 0,
           "status": "Replace this sample with your own activity.",
           "issueIds": ["example-issue"],

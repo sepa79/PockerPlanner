@@ -63,6 +63,8 @@ async (page) => {
   ensure(saved.plans[0].activities[0].progress === 100, "Saved progress is not complete");
   ensure(saved.plans[0].activities[0].durationDays === 2 && saved.plans[0].activities[0].start === "2026-10-13", "Progress editing changed the schedule");
   ensure(saved.plans[0].activities[0].status === beforeDraft.plans[0].activities[0].status, "Done overwrote the description");
+  const track = await page.locator(".activity-row .track").first().evaluate(element => ({width: element.getBoundingClientRect().width, expected: Number.parseFloat(element.style.width)}));
+  ensure(track.width > 0 && Math.abs(track.width - track.expected) < 1, "Gantt inline positioning styles are blocked or mis-sized");
   await page.getByRole("button", {name: "Collapse Example stream", exact: true}).click();
   ensure(await page.locator(".stream-summary-label").textContent() === "Example stream", "Collapsed bar has no stream name");
   ensure(await page.locator(".stream-progress").textContent() === "100%", "Stream progress did not refresh after Save");
@@ -87,5 +89,5 @@ async (page) => {
   ensure(await number.isDisabled() && await slider.isDisabled() && await done.isDisabled(), "A view-only progress control is enabled");
   ensure(await page.locator("#editor-form button[type=submit]").isHidden(), "Viewers can see Save");
   await page.locator("#close-editor").click();
-  return {checks: "slider, typing, native stepping, invalid inputs, Done, Cancel, Save, reload, read-only, named collapsed bars, mobile layout", revision: (await state()).revision, mobile};
+  return {checks: "slider, typing, native stepping, invalid inputs, Done, Cancel, Save, reload, read-only, rendered Gantt tracks, named collapsed bars, mobile layout", revision: (await state()).revision, mobile};
 }

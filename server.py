@@ -1,85 +1,117 @@
-"""Responsibility: HTTP and static delivery for the planner. Must not: own planner state or validation. Contract: docs/ARCHITECTURE.md#contract."""
+"""Responsibility: HTTP and static delivery, including the MCP transport. State and identity belong to their owners."""
 
 import json
+import logging
 import os
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from planner_store import InvalidState, RevisionConflict, read, write
+import uvicorn
+from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
+from starlette.exceptions import HTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse, Response
+from starlette.routing import Mount, Route
+
+from planner_mcp import create_mcp_server, transport_security
+from planner_store import MAX_DOCUMENT_BYTES, InvalidState, RevisionConflict, read, write
 from pockethive_auth import AuthError, access, login, require_editor
 
-
 WEB = Path(__file__).resolve().parent / "web"
-STATIC = {"/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"), "/auth.js": ("auth.js", "text/javascript"), "/progress.js": ("progress.js", "text/javascript"), "/style.css": ("style.css", "text/css"), "/brand.css": ("brand.css", "text/css"), "/pocketplanner-logo.svg": ("pocketplanner-logo.svg", "image/svg+xml"), "/pocketplanner-mark.svg": ("pocketplanner-mark.svg", "image/svg+xml"), "/example-plan.json": ("example-plan.json", "application/json")}
+STATIC = {"/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"), "/auth.js": ("auth.js", "text/javascript"), "/progress.js": ("progress.js", "text/javascript"), "/schedule.js": ("schedule.js", "text/javascript"), "/style.css": ("style.css", "text/css"), "/brand.css": ("brand.css", "text/css"), "/pocketplanner-logo.svg": ("pocketplanner-logo.svg", "image/svg+xml"), "/pocketplanner-mark.svg": ("pocketplanner-mark.svg", "image/svg+xml"), "/example-plan.json": ("example-plan.json", "application/json")}
+MAX_BODY_BYTES = MAX_DOCUMENT_BYTES
 
 
-class Handler(BaseHTTPRequestHandler):
-    def _send(self, status, payload, content_type="application/json"):
-        self.send_response(status)
-        self.send_header("Content-Type", f"{content_type}; charset=utf-8")
-        self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
-        self.end_headers()
-        self.wfile.write(payload)
+class ResponseHeaders(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+        return response
 
-    def _json(self, status, document):
-        self._send(status, json.dumps(document).encode("utf-8"))
 
-    def do_GET(self):
-        try:
-            if self.path == "/api/state":
-                return self._json(200, read())
-            if self.path == "/api/session":
-                return self._json(200, access(self.headers.get("Authorization")))
-            if self.path == "/health":
-                read()
-                return self._json(200, {"status": "ok"})
-            if self.path in STATIC:
-                filename, content_type = STATIC[self.path]
-                return self._send(200, (WEB / filename).read_bytes(), content_type)
-            self._json(404, {"error": "Not found"})
-        except AuthError as error:
-            self._json(error.status, {"error": str(error)})
-        except Exception:
-            self._json(500, {"error": "Unable to read planner"})
-
-    def _document(self):
-        length = int(self.headers.get("Content-Length", "0"))
-        if not 0 < length <= 1024 * 1024:
+async def _document(request):
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > MAX_BODY_BYTES:
             raise InvalidState("Request size must be 1 byte–1 MB")
-        return json.loads(self.rfile.read(length))
+        body.extend(chunk)
+    if not body:
+        raise InvalidState("Request size must be 1 byte–1 MB")
+    try:
+        return json.loads(body)
+    except (ValueError, UnicodeError):
+        raise InvalidState("Request must contain valid JSON") from None
 
-    def do_POST(self):
-        if self.path != "/api/session/login":
-            return self._json(404, {"error": "Not found"})
-        try:
-            self._json(200, login(self._document()))
-        except AuthError as error:
-            self._json(error.status, {"error": str(error)})
-        except (InvalidState, ValueError) as error:
-            self._json(400, {"error": str(error)})
-        except Exception:
-            self._json(500, {"error": "Unable to sign in"})
 
-    def do_PUT(self):
-        if self.path != "/api/state":
-            return self._json(404, {"error": "Not found"})
-        try:
-            require_editor(self.headers.get("Authorization"))
-            document = self._document()
-            self._json(200, write(document))
-        except AuthError as error:
-            self._json(error.status, {"error": str(error)})
-        except (InvalidState, ValueError, json.JSONDecodeError) as error:
-            self._json(400, {"error": str(error)})
-        except RevisionConflict as error:
-            self._json(409, {"error": str(error)})
-        except Exception:
-            self._json(500, {"error": "Unable to save planner"})
+async def state_endpoint(request):
+    if request.method == "GET":
+        return JSONResponse(await run_in_threadpool(read))
+    await run_in_threadpool(require_editor, request.headers.get("authorization"))
+    document = await _document(request)
+    return JSONResponse(await run_in_threadpool(write, document))
 
+
+async def session_endpoint(request):
+    return JSONResponse(await run_in_threadpool(access, request.headers.get("authorization")))
+
+
+async def login_endpoint(request):
+    document = await _document(request)
+    return JSONResponse(await run_in_threadpool(login, document))
+
+
+def health_endpoint(request):
+    read()
+    return JSONResponse({"status": "ok"})
+
+
+def static_endpoint(request):
+    filename, content_type = STATIC[request.url.path]
+    return Response((WEB / filename).read_bytes(), media_type=content_type)
+
+
+async def error_response(request, error):
+    if isinstance(error, AuthError):
+        return JSONResponse({"error": str(error)}, status_code=error.status)
+    if isinstance(error, RevisionConflict):
+        return JSONResponse({"error": str(error)}, status_code=409)
+    if isinstance(error, InvalidState):
+        return JSONResponse({"error": str(error)}, status_code=400)
+    if isinstance(error, HTTPException):
+        return JSONResponse({"error": error.detail}, status_code=error.status_code)
+    logging.getLogger(__name__).error("Planner request failed", exc_info=error)
+    return JSONResponse({"error": "Unable to serve planner"}, status_code=500)
+
+
+def create_app():
+    mcp_server = create_mcp_server()
+    mcp_app = mcp_server.streamable_http_app(json_response=True, stateless_http=True, max_request_body_size=MAX_BODY_BYTES, transport_security=transport_security())
+
+    @asynccontextmanager
+    async def lifespan(application):
+        async with mcp_server.session_manager.run():
+            yield
+
+    application = Starlette(
+        routes=[
+            Route("/api/state", state_endpoint, methods=["GET", "PUT"]),
+            Route("/api/session", session_endpoint, methods=["GET"]),
+            Route("/api/session/login", login_endpoint, methods=["POST"]),
+            Route("/health", health_endpoint),
+            *[Route(path, static_endpoint) for path in STATIC],
+            Mount("/", app=mcp_app),
+        ],
+        lifespan=lifespan,
+        exception_handlers={AuthError: error_response, InvalidState: error_response, RevisionConflict: error_response, HTTPException: error_response, Exception: error_response},
+    )
+    application.add_middleware(ResponseHeaders)
+    return application
+
+
+app = create_app()
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "8765"))
-    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
+    uvicorn.run(app, host=os.environ.get("HOST", "0.0.0.0"), port=int(os.environ.get("PORT", "8765")), proxy_headers=False)

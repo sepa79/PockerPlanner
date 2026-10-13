@@ -1,8 +1,10 @@
 services:
   pockerplanner:
-    image: ghcr.io/sepa79/pockerplanner:latest
+    image: ghcr.io/sepa79/pockerplanner:v0.1.0
     environment:
       POCKETHIVE_AUTH_BASE_URL: "${POCKETHIVE_AUTH_BASE_URL:-}"
+      POCKERPLANNER_MCP_ALLOWED_HOSTS: "${POCKERPLANNER_MCP_ALLOWED_HOSTS:-}"
+      POCKERPLANNER_MCP_ALLOWED_ORIGINS: "${POCKERPLANNER_MCP_ALLOWED_ORIGINS:-}"
     ports:
       - "8765:8765"
     volumes:

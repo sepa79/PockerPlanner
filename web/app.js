@@ -6,6 +6,7 @@ let activePlanId = null;
 const emptyPlanView = {id: null, name: "", description: "", streams: [], activityTypes: [], activities: [], issues: []};
 let editorKind;
 let editorId;
+let mutationPending = false;
 let timelineStart = null;
 let ignoreClick = false;
 let onlyBlockers = false;
@@ -22,17 +23,14 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[character]);
 }
 
-function dateAt(value) { return new Date(`${value}T00:00:00Z`); }
-function iso(date) { return date.toISOString().slice(0, 10); }
-function addDays(value, days) { const date = dateAt(value); date.setUTCDate(date.getUTCDate() + days); return iso(date); }
-function dayDiff(first, second) { return Math.round((dateAt(second) - dateAt(first)) / 86400000); }
+const {dateAt, addDays, dayDiff} = window.PockerSchedule;
 function today() { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
 function shortDate(value) { return dateAt(value).toLocaleDateString("en-GB", {day: "numeric", month: "short", timeZone: "UTC"}); }
 function resolutionTime(value) { return value ? `<time datetime="${escapeHtml(value)}" title="${escapeHtml(value)}">${escapeHtml(new Date(value).toLocaleString("en-GB", {dateStyle: "medium", timeStyle: "short"}))}</time>` : "Not recorded"; }
 function byId(collection, id) { return collection.find(item => item.id === id); }
 function blockersForStream(streamId) { return planner.issues.filter(issue => issue.open && issue.blocker && (issue.scope === "ALL" || issue.streamIds.includes(streamId))); }
 function openBlockers(activity) { return blockersForStream(activity.streamId); }
-function isOverdue(activity) { return activity.progress < 100 && addDays(activity.start, activity.durationDays - 1) < today(); }
+function isOverdue(activity) { return activity.progress < 100 && window.PockerSchedule.activity(activity).end < today(); }
 function uid() { return Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, "0")).join(""); }
 function toast(message) { const element = document.getElementById("toast"); element.textContent = message; element.classList.add("show"); clearTimeout(toast.timer); toast.timer = setTimeout(() => element.classList.remove("show"), 3200); }
 
@@ -66,17 +64,36 @@ function selectCurrentPlan() {
 }
 
 async function persist(draft) {
+  if (mutationPending) throw new Error("Wait for the current update to finish.");
   if (!window.PockerAuth.canEdit) throw new Error("Sign in as PocketHive local-admin to edit");
-  const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PockerAuth.headers()}, body: JSON.stringify(draft)});
-  const result = await response.json();
-  if (!response.ok) {
-    if (response.status === 409) await load();
-    throw new Error(result.error || "Could not save");
+  const controls = [...form.querySelectorAll("input, select, textarea, button")].map(element => ({element, disabled: element.disabled}));
+  const submitButton = form.querySelector("button[type=submit]");
+  const submitLabel = submitButton.textContent;
+  mutationPending = true;
+  form.setAttribute("aria-busy", "true");
+  controls.forEach(({element}) => { element.disabled = true; });
+  submitButton.textContent = "Saving…";
+  try {
+    const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PockerAuth.headers()}, body: JSON.stringify(draft)});
+    const result = await response.json();
+    if (!response.ok) {
+      if (response.status === 409) {
+        editor.close();
+        await load();
+        throw new Error("Plan changed elsewhere. Your edit was not saved. Reopen details to review the latest data.");
+      }
+      throw new Error(result.error || "Could not save");
+    }
+    workspace = result;
+    selectCurrentPlan();
+    render();
+    toast("Plan saved");
+  } finally {
+    controls.forEach(({element, disabled}) => { element.disabled = disabled; });
+    submitButton.textContent = submitLabel;
+    form.setAttribute("aria-busy", "false");
+    mutationPending = false;
   }
-  workspace = result;
-  selectCurrentPlan();
-  render();
-  toast("Plan saved");
 }
 
 function renderStats() {
@@ -89,11 +106,10 @@ function renderStats() {
   document.getElementById("issue-count").textContent = planner.issues.filter(issue => issue.open).length;
 }
 
-function trackDecorations(start, count, todayOffset, group = false) {
+function trackDecorations(start, count, todayOffset) {
   let html = "";
-  if (!group) for (let index = 0; index < count; index++) {
-    const weekday = dateAt(addDays(start, index)).getUTCDay();
-    if (weekday === 0 || weekday === 6) html += `<span class="weekend" style="left:${index * dayWidth}px;width:${dayWidth}px"></span>`;
+  for (let index = 0; index < count; index++) {
+    if (window.PockerSchedule.isWeekend(addDays(start, index))) html += `<span class="weekend" style="left:${index * dayWidth}px;width:${dayWidth}px"></span>`;
   }
   if (todayOffset >= 0 && todayOffset < count) html += `<span class="today-line" style="left:${todayOffset * dayWidth + dayWidth / 2}px"></span>`;
   return html;
@@ -115,7 +131,7 @@ function renderGantt() {
   const header = Array.from({length: count}, (_, index) => {
     const date = addDays(timelineStart, index);
     const weekday = dateAt(date).toLocaleDateString("en-GB", {weekday: "short", timeZone: "UTC"});
-    return `<span class="day ${date === today() ? "today" : ""}" style="width:${dayWidth}px">${weekday}<strong>${dateAt(date).getUTCDate()}</strong></span>`;
+    return `<span class="day ${date === today() ? "today" : ""} ${window.PockerSchedule.isWeekend(date) ? "weekend-day" : ""}" style="width:${dayWidth}px">${weekday}<strong>${dateAt(date).getUTCDate()}</strong></span>`;
   }).join("");
   let html = `<div class="gantt-inner" style="--day-width:${dayWidth}px"><div class="gantt-row header"><div class="row-label">Stream / activity</div><div class="track" style="width:${width}px">${header}</div></div>`;
   for (const [streamIndex, stream] of planner.streams.entries()) {
@@ -127,34 +143,23 @@ function renderGantt() {
     const progressTitle = progress === null ? "No activities" : "Overall progress · average of all activity percentages";
     let summary = "";
     if (collapsed && activities.length) {
-      const first = activities[0].start;
-      const last = activities.map(activity => addDays(activity.start, activity.durationDays - 1)).sort().at(-1);
-      const startOffset = dayDiff(timelineStart, first);
-      const endOffset = dayDiff(timelineStart, last) + 1;
-      const visibleStart = Math.max(0, startOffset);
-      const visibleEnd = Math.min(count, endOffset);
-      const summaryWidth = (visibleEnd - visibleStart) * dayWidth - 4;
-      const progressEnd = startOffset + (endOffset - startOffset) * progress / 100;
-      const visibleProgress = Math.max(0, Math.min(100, (progressEnd - visibleStart) / Math.max(1, visibleEnd - visibleStart) * 100));
-      const title = `${stream.name} · ${activities.length} activities · ${shortDate(first)} – ${shortDate(last)} · ${progressLabel} overall · Range includes gaps between activities`;
-      if (summaryWidth > 0) summary = `<span class="stream-summary" style="left:${visibleStart * dayWidth + 2}px;width:${summaryWidth}px" title="${escapeHtml(title)}"><span class="stream-summary-fill" style="width:${visibleProgress}%"></span><span class="stream-summary-label">${escapeHtml(stream.name)}</span></span>`;
+      const schedule = window.PockerSchedule.summary(activities);
+      const title = `${stream.name} · ${activities.length} activities · ${shortDate(schedule.start)} – ${shortDate(schedule.end)} · ${progressLabel} overall · Scheduled days only`;
+      summary = window.PockerSchedule.visibleSegments(schedule, timelineStart, count, progress).filter(segment => segment.durationDays * dayWidth > 4).map(segment => `<span class="stream-summary" data-start="${segment.start}" data-end="${segment.end}" style="left:${segment.offset * dayWidth + 2}px;width:${segment.durationDays * dayWidth - 4}px" title="${escapeHtml(title)}"><span class="stream-summary-fill" style="width:${segment.progress}%"></span><span class="stream-summary-label">${escapeHtml(stream.name)}</span></span>`).join("");
     }
     const activityGroupId = `stream-activities-${streamIndex}`;
-    html += `<div class="gantt-row group${blockedClass}"><div class="row-label"><button class="stream-toggle" data-toggle-stream="${escapeHtml(stream.id)}" aria-expanded="${!collapsed}" aria-controls="${activityGroupId}" aria-label="${collapsed ? "Expand" : "Collapse"} ${escapeHtml(stream.name)}" title="${escapeHtml(stream.description)}"><span class="stream-chevron" aria-hidden="true">${collapsed ? "▸" : "▾"}</span><span class="stream-name">${escapeHtml(stream.name)}${blockedClass ? " ◇" : ""}</span></button><span class="stream-progress" title="${progressTitle}" aria-label="${escapeHtml(stream.name)} overall progress: ${progress === null ? "no activities" : progressLabel}">${progressLabel}</span><button class="stream-edit" data-edit="stream" data-id="${escapeHtml(stream.id)}" aria-label="Edit ${escapeHtml(stream.name)}">✎</button></div><div class="track" style="width:${width}px">${trackDecorations(timelineStart, count, todayOffset, true)}${summary}</div></div><div id="${activityGroupId}" ${collapsed ? "hidden" : ""}>`;
+    html += `<div class="gantt-row group${blockedClass}"><div class="row-label"><button class="stream-toggle" data-toggle-stream="${escapeHtml(stream.id)}" aria-expanded="${!collapsed}" aria-controls="${activityGroupId}" aria-label="${collapsed ? "Expand" : "Collapse"} ${escapeHtml(stream.name)}" title="${escapeHtml(stream.description)}"><span class="stream-chevron" aria-hidden="true">${collapsed ? "▸" : "▾"}</span><span class="stream-name">${escapeHtml(stream.name)}${blockedClass ? " ◇" : ""}</span></button><span class="stream-progress" title="${progressTitle}" aria-label="${escapeHtml(stream.name)} overall progress: ${progress === null ? "no activities" : progressLabel}">${progressLabel}</span><button class="stream-edit" data-edit="stream" data-id="${escapeHtml(stream.id)}" aria-label="Edit ${escapeHtml(stream.name)}">✎</button></div><div class="track" style="width:${width}px">${trackDecorations(timelineStart, count, todayOffset)}${summary}</div></div><div id="${activityGroupId}" ${collapsed ? "hidden" : ""}>`;
     for (const activity of activities) {
       const type = byId(planner.activityTypes, activity.typeId);
       const blockers = openBlockers(activity);
       const overdue = isOverdue(activity);
-      const startOffset = dayDiff(timelineStart, activity.start);
-      const visibleStart = Math.max(0, startOffset);
-      const visibleEnd = Math.min(count, startOffset + activity.durationDays);
-      const left = visibleStart * dayWidth + 2;
-      const barWidth = (visibleEnd - visibleStart) * dayWidth - 4;
+      const schedule = window.PockerSchedule.activity(activity);
       const status = `${activity.progress}%${blockers.length ? " ◇" : overdue ? " !" : ""}`;
-      const title = `${activity.name} · ${type.name} · ${shortDate(activity.start)} · ${activity.durationDays} full planned day(s) · ${blockers.length} blockers${overdue ? " · Overdue" : ""}`;
-      const progressEnd = startOffset + activity.durationDays * activity.progress / 100;
-      const visibleProgress = Math.max(0, Math.min(100, (progressEnd - visibleStart) / Math.max(1, visibleEnd - visibleStart) * 100));
-      const bar = barWidth > 0 ? `<button class="bar ${activity.dateConfirmed ? "" : "tentative"} ${blockers.length ? "blocked" : ""}" style="left:${left}px;width:${barWidth}px;--bar-color:${type.color}" data-edit="activity" data-id="${escapeHtml(activity.id)}" title="${escapeHtml(title)}"><span class="bar-fill" style="width:${visibleProgress}%"></span><span class="bar-label">${barWidth > 85 ? escapeHtml(activity.name) : ""}</span><span class="bar-progress">${barWidth > 35 ? `${activity.progress}%` : ""}</span></button>` : "";
+      const title = `${activity.name} · ${type.name} · ${shortDate(schedule.start)} – ${shortDate(schedule.end)} · ${activity.durationDays} full planned ${activity.includeWeekends === true ? "calendar" : "working"} day(s) · ${blockers.length} blockers${overdue ? " · Overdue" : ""}`;
+      const bar = window.PockerSchedule.visibleSegments(schedule, timelineStart, count, activity.progress).filter(segment => segment.durationDays * dayWidth > 4).map(segment => {
+        const barWidth = segment.durationDays * dayWidth - 4;
+        return `<button class="bar ${activity.dateConfirmed ? "" : "tentative"} ${blockers.length ? "blocked" : ""}" style="left:${segment.offset * dayWidth + 2}px;width:${barWidth}px;--bar-color:${type.color}" data-edit="activity" data-id="${escapeHtml(activity.id)}" data-start="${segment.start}" data-end="${segment.end}" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}"><span class="bar-fill" style="width:${segment.progress}%"></span><span class="bar-label">${barWidth > 85 ? escapeHtml(activity.name) : ""}</span><span class="bar-progress">${barWidth > 35 ? `${activity.progress}%` : ""}</span></button>`;
+      }).join("");
       html += `<div class="gantt-row activity-row${blockedClass}"><div class="row-label"><button class="activity-name" data-edit="activity" data-id="${escapeHtml(activity.id)}" title="${escapeHtml(title)}">${escapeHtml(activity.name)}</button><span class="activity-sub ${blockers.length || overdue ? "blocked-text" : ""}" title="${escapeHtml(title)}">${status}</span></div><div class="track" style="width:${width}px">${trackDecorations(timelineStart, count, todayOffset)}${bar}</div></div>`;
     }
     html += "</div>";
@@ -196,8 +201,8 @@ function field(name, label, value = "", type = "text", attributes = "") {
   return `<div class="field"><label for="field-${name}">${label}</label><input id="field-${name}" name="${name}" type="${type}" value="${escapeHtml(value)}" ${attributes}></div>`;
 }
 
-function area(name, label, value = "") {
-  return `<div class="field"><label for="field-${name}">${label}</label><textarea id="field-${name}" name="${name}" maxlength="2000">${escapeHtml(value)}</textarea></div>`;
+function area(name, label, value = "", maximum = 2000) {
+  return `<div class="field"><label for="field-${name}">${label}</label><textarea id="field-${name}" name="${name}" maxlength="${maximum}">${escapeHtml(value)}</textarea></div>`;
 }
 
 function select(name, label, options, value) {
@@ -205,6 +210,7 @@ function select(name, label, options, value) {
 }
 
 function openEditor(kind, id = null) {
+  if (mutationPending) return;
   if (!id && !window.PockerAuth.canEdit) return toast("Sign in as PocketHive local-admin to edit");
   if (kind !== "plan" && !planner.id) { selectTab("plans"); toast("Create a plan first"); return; }
   if (kind === "activity" && (!planner.streams.length || !planner.activityTypes.length)) {
@@ -225,7 +231,21 @@ function openEditor(kind, id = null) {
     const issues = planner.issues.map(issue => `<label class="blocker-option"><input type="checkbox" name="issueIds" value="${escapeHtml(issue.id)}" ${item?.issueIds.includes(issue.id) ? "checked" : ""}>${escapeHtml(issue.title)}</label>`).join("");
     const progress = item?.progress ?? 0;
     const progressField = `<div class="field progress-field"><label for="field-progress">Progress · %</label><div class="progress-controls"><input id="field-progress-slider" type="range" min="0" max="100" step="1" value="${progress}" aria-label="Progress slider"><input id="field-progress" name="progress" type="number" min="0" max="100" step="1" value="${progress}" required><button id="progress-done" type="button" class="button button-outline" title="Set progress to 100%">Done</button></div></div>`;
-    fields.innerHTML = field("name", "Activity name", item?.name || "", "text", "required maxlength=160") + `<div class="form-grid">${select("streamId", "Stream", planner.streams, item?.streamId)}${select("typeId", "Activity type", planner.activityTypes, item?.typeId)}${field("start", "Start date", item?.start || today(), "date", "required")}${field("durationDays", "Full planned duration · days", item?.durationDays ?? 1, "number", "required min=1 max=365 step=1")}${progressField}</div><p class="form-hint">Duration is the total calendar time planned, never the time left.</p><label class="check-field"><input type="checkbox" name="dateConfirmed" ${item?.dateConfirmed ? "checked" : ""}>Start date confirmed by team</label>${area("status", "Status / description", item?.status)}<span class="field-label">Linked issues</span><div class="blocker-list">${issues || "<span class='form-hint'>No issues yet. Add one from the main screen.</span>"}</div>${field("jiraUrl", "Jira ticket link · optional HTTPS", item?.jiraUrl || "", "url", "placeholder='https://…'")}${item?.jiraUrl ? `<a class="external-link" href="${escapeHtml(item.jiraUrl)}" target="_blank" rel="noopener noreferrer">Open Jira ticket ↗</a>` : ""}`;
+    fields.innerHTML = field("name", "Activity name", item?.name || "", "text", "required maxlength=160") + `<div class="form-grid">${select("streamId", "Stream", planner.streams, item?.streamId)}${select("typeId", "Activity type", planner.activityTypes, item?.typeId)}${field("start", "Start date", item?.start || window.PockerSchedule.workingStart(today()), "date", "required")}${field("durationDays", "Full planned duration · working days", item?.durationDays ?? 1, "number", "required min=1 max=365 step=1")}${progressField}</div><label class="check-field"><input type="checkbox" name="includeWeekends" aria-describedby="schedule-hint" ${item?.includeWeekends === true ? "checked" : ""}>Include weekends</label><p class="form-hint" id="schedule-hint"></p><label class="check-field"><input type="checkbox" name="dateConfirmed" ${item?.dateConfirmed ? "checked" : ""}>Start date confirmed by team</label>${area("status", "Status / description", item?.status, 1000)}<span class="field-label">Linked issues</span><div class="blocker-list">${issues || "<span class='form-hint'>No issues yet. Add one from the main screen.</span>"}</div>${field("jiraUrl", "Jira ticket link · optional HTTPS", item?.jiraUrl || "", "url", "placeholder='https://…'")}${item?.jiraUrl ? `<a class="external-link" href="${escapeHtml(item.jiraUrl)}" target="_blank" rel="noopener noreferrer">Open Jira ticket ↗</a>` : ""}`;
+    const startInput = document.getElementById("field-start");
+    const durationInput = document.getElementById("field-durationDays");
+    const weekendsInput = fields.querySelector("[name=includeWeekends]");
+    const syncSchedule = () => {
+      fields.querySelector("label[for=field-durationDays]").textContent = `Full planned duration · ${weekendsInput.checked ? "calendar" : "working"} days`;
+      const hint = document.getElementById("schedule-hint");
+      hint.textContent = "Duration is the full planned time, never the time left.";
+      if (startInput.value && startInput.validity.valid && durationInput.value && durationInput.validity.valid) {
+        const schedule = window.PockerSchedule.activity({start: startInput.value, durationDays: Number(durationInput.value), includeWeekends: weekendsInput.checked});
+        hint.textContent += ` Scheduled ${shortDate(schedule.start)} – ${shortDate(schedule.end)}.${weekendsInput.checked ? " Weekends included." : " Weekends stay free; weekend starts begin on Monday."}`;
+      }
+    };
+    [startInput, durationInput, weekendsInput].forEach(input => input.addEventListener("input", syncSchedule));
+    syncSchedule();
     const progressInput = document.getElementById("field-progress");
     const progressSlider = document.getElementById("field-progress-slider");
     progressSlider.addEventListener("input", () => { progressInput.value = progressSlider.value; });
@@ -266,7 +286,7 @@ function formItem() {
     const original = editorId ? byId(workspace.plans, editorId) : {id: uid(), streams: [], activityTypes: [], activities: [], issues: []};
     return {...original, name: text("name"), description: text("description")};
   }
-  if (editorKind === "activity") return {id: editorId || uid(), name: text("name"), streamId: text("streamId"), typeId: text("typeId"), start: text("start"), durationDays: Number(text("durationDays")), progress: Number(text("progress")), dateConfirmed: values.has("dateConfirmed"), status: text("status"), issueIds: values.getAll("issueIds"), jiraUrl: text("jiraUrl")};
+  if (editorKind === "activity") return {id: editorId || uid(), name: text("name"), streamId: text("streamId"), typeId: text("typeId"), start: text("start"), durationDays: Number(text("durationDays")), includeWeekends: values.has("includeWeekends"), progress: Number(text("progress")), dateConfirmed: values.has("dateConfirmed"), status: text("status"), issueIds: values.getAll("issueIds"), jiraUrl: text("jiraUrl")};
   if (editorKind === "stream") return {id: editorId || uid(), name: text("name"), description: text("description")};
   if (editorKind === "type") return {id: editorId || uid(), name: text("name"), color: text("color")};
   return {id: editorId || uid(), title: text("title"), description: text("description"), scope: text("scope"), streamIds: text("scope") === "ALL" ? [] : values.getAll("streamIds"), blocker: values.has("blocker"), discovered: text("discovered"), open: text("open") === "true", descriptionIncomplete: values.has("descriptionIncomplete"), jiraUrl: text("jiraUrl")};
@@ -274,7 +294,7 @@ function formItem() {
 
 form.addEventListener("submit", async event => {
   event.preventDefault();
-  if (!window.PockerAuth.canEdit) return;
+  if (!editor.open || mutationPending || !window.PockerAuth.canEdit) return;
   const key = {activity: "activities", stream: "streams", type: "activityTypes", issue: "issues"}[editorKind];
   const item = formItem();
   try {
@@ -292,7 +312,7 @@ form.addEventListener("submit", async event => {
 });
 
 document.getElementById("delete-item").addEventListener("click", async () => {
-  if (!window.PockerAuth.canEdit) return;
+  if (!editor.open || mutationPending || !window.PockerAuth.canEdit) return;
   const key = {activity: "activities", stream: "streams", type: "activityTypes", issue: "issues"}[editorKind];
   if (editorKind === "stream" && planner.activities.some(activity => activity.streamId === editorId)) return toast("Move or delete this stream’s activities first");
   if (editorKind === "type" && planner.activities.some(activity => activity.typeId === editorId)) return toast("Move activities to another type first");
@@ -304,8 +324,9 @@ document.getElementById("delete-item").addEventListener("click", async () => {
   } catch (error) { toast(error.message); }
 });
 
-document.getElementById("close-editor").addEventListener("click", () => editor.close());
-document.getElementById("cancel-editor").addEventListener("click", () => editor.close());
+editor.addEventListener("cancel", event => { if (mutationPending) event.preventDefault(); });
+document.getElementById("close-editor").addEventListener("click", () => { if (!mutationPending) editor.close(); });
+document.getElementById("cancel-editor").addEventListener("click", () => { if (!mutationPending) editor.close(); });
 document.getElementById("add-activity").addEventListener("click", () => openEditor("activity"));
 document.getElementById("add-stream").addEventListener("click", () => openEditor("stream"));
 document.getElementById("add-issue").addEventListener("click", () => openEditor("issue"));
@@ -319,7 +340,7 @@ document.getElementById("range-days").addEventListener("change", event => { visi
 
 document.getElementById("export-json").addEventListener("click", () => {
   const document = {...workspace, revision: 0};
-  const url = URL.createObjectURL(new Blob([JSON.stringify(document, null, 2)], {type: "application/json"}));
+  const url = URL.createObjectURL(new Blob([JSON.stringify(document)], {type: "application/json"}));
   const link = window.document.createElement("a");
   link.href = url;
   link.download = "pockerplanner-plan.json";
@@ -328,6 +349,7 @@ document.getElementById("export-json").addEventListener("click", () => {
 });
 
 document.getElementById("import-json").addEventListener("click", async event => {
+  if (mutationPending) return;
   const file = document.getElementById("import-file").files[0];
   const result = document.getElementById("import-result");
   if (!file) { result.textContent = "Select a JSON file first."; return; }
@@ -398,23 +420,28 @@ document.getElementById("gantt").addEventListener("click", event => {
 
 document.getElementById("gantt").addEventListener("pointerdown", event => {
   const bar = event.target.closest(".bar");
-  if (!bar || event.button !== 0 || !window.PockerAuth.canEdit) return;
+  if (!bar || event.button !== 0 || mutationPending || !window.PockerAuth.canEdit) return;
   const startX = event.clientX;
-  const originalLeft = parseFloat(bar.style.left);
+  const activity = byId(planner.activities, bar.dataset.id);
+  const originalStart = window.PockerSchedule.activity(activity).start;
+  const segments = [...bar.closest(".activity-row").querySelectorAll(".bar")].map(element => ({element, left: parseFloat(element.style.left)}));
+  const restore = () => { for (const segment of segments) segment.element.style.left = `${segment.left}px`; };
   bar.setPointerCapture(event.pointerId);
-  const move = moveEvent => { bar.style.left = `${originalLeft + moveEvent.clientX - startX}px`; };
+  const move = moveEvent => { for (const segment of segments) segment.element.style.left = `${segment.left + moveEvent.clientX - startX}px`; };
   const finish = async upEvent => {
     bar.removeEventListener("pointermove", move);
     bar.removeEventListener("pointerup", finish);
     bar.removeEventListener("pointercancel", cancel);
     const days = Math.round((upEvent.clientX - startX) / dayWidth);
-    if (!days) { bar.style.left = `${originalLeft}px`; return; }
+    if (!days) { restore(); return; }
     ignoreClick = true;
     setTimeout(() => { ignoreClick = false; }, 100);
-    try { await save(draft => { const activity = byId(draft.activities, bar.dataset.id); activity.start = addDays(activity.start, days); activity.dateConfirmed = false; }); }
+    const start = window.PockerSchedule.workingStart(addDays(originalStart, days), activity.includeWeekends === true);
+    if (start === activity.start) { restore(); return; }
+    try { await save(draft => { const target = byId(draft.activities, bar.dataset.id); target.start = start; target.dateConfirmed = false; }); }
     catch (error) { render(); toast(error.message); }
   };
-  const cancel = () => { bar.removeEventListener("pointermove", move); bar.removeEventListener("pointerup", finish); bar.removeEventListener("pointercancel", cancel); bar.style.left = `${originalLeft}px`; };
+  const cancel = () => { bar.removeEventListener("pointermove", move); bar.removeEventListener("pointerup", finish); bar.removeEventListener("pointercancel", cancel); restore(); };
   bar.addEventListener("pointermove", move);
   bar.addEventListener("pointerup", finish);
   bar.addEventListener("pointercancel", cancel);

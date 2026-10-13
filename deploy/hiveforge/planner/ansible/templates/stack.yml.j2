@@ -4,6 +4,8 @@ services:
     image: {{ planner_image | to_json }}
     environment:
       POCKETHIVE_AUTH_BASE_URL: {{ planner_auth_base | to_json }}
+      POCKERPLANNER_MCP_ALLOWED_HOSTS: {{ planner_mcp_hosts | to_json }}
+      POCKERPLANNER_MCP_ALLOWED_ORIGINS: {{ planner_mcp_origins | to_json }}
     ports:
       - target: 8765
         published: {{ planner_port | int }}

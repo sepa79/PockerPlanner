@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parent
 DATABASE = Path(os.environ.get("TESTPLANNER_DB", ROOT / "data" / "planner.sqlite3"))
 SCHEMA_VERSION = 1
+MAX_DOCUMENT_BYTES = 1024 * 1024
 
 
 class InvalidState(ValueError):
@@ -36,6 +37,26 @@ def _url(value, field):
     return value
 
 
+def _calendar_date(value, field):
+    try:
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+            raise ValueError
+        date.fromisoformat(value)
+    except ValueError:
+        raise InvalidState(f"{field} must be a valid YYYY-MM-DD calendar date") from None
+
+
+def _serialize(document):
+    try:
+        serialized = json.dumps(document, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        size = len(serialized.encode("utf-8"))
+    except (TypeError, ValueError, UnicodeError):
+        raise InvalidState("Workspace must contain valid UTF-8 JSON") from None
+    if size > MAX_DOCUMENT_BYTES:
+        raise InvalidState("Workspace must not exceed 1 MiB of compact UTF-8 JSON")
+    return serialized
+
+
 def _items(document, key, maximum=500):
     items = document.get(key)
     if not isinstance(items, list) or len(items) > maximum:
@@ -45,6 +66,8 @@ def _items(document, key, maximum=500):
         if not isinstance(item, dict):
             raise InvalidState(f"Invalid {key} item")
         item_id = _text(item.get("id"), f"{key} ID", 80, True)
+        if item_id != item["id"]:
+            raise InvalidState(f"{key} ID must not contain leading or trailing whitespace")
         if item_id in seen:
             raise InvalidState(f"Duplicate {key} ID: {item_id}")
         seen.add(item_id)
@@ -91,22 +114,18 @@ def _validate_plan(plan):
                 datetime.fromisoformat(resolved_at)
             except ValueError:
                 raise InvalidState("Issue resolvedAt must be an ISO timestamp with a timezone") from None
-        try:
-            date.fromisoformat(issue.get("discovered", ""))
-        except (TypeError, ValueError):
-            raise InvalidState("Invalid issue discovery date") from None
+        _calendar_date(issue.get("discovered"), "Issue discovery date")
     for activity in activities:
         _text(activity.get("name"), "activity name", 160, True)
         _text(activity.get("status"), "activity status", 1000)
         _url(activity.get("jiraUrl"), "activity Jira URL")
         if not isinstance(activity.get("streamId"), str) or not isinstance(activity.get("typeId"), str) or activity["streamId"] not in stream_ids or activity["typeId"] not in type_ids:
             raise InvalidState("Activity refers to a missing stream or type in its plan")
-        try:
-            date.fromisoformat(activity.get("start", ""))
-        except (TypeError, ValueError):
-            raise InvalidState("Invalid activity start date") from None
+        _calendar_date(activity.get("start"), "Activity start date")
         if type(activity.get("durationDays")) is not int or not 1 <= activity["durationDays"] <= 365:
-            raise InvalidState("Duration must be 1–365 full calendar days")
+            raise InvalidState("Duration must be 1–365 full planned days")
+        if type(activity.get("includeWeekends", False)) is not bool:
+            raise InvalidState("includeWeekends must be a boolean")
         if type(activity.get("progress")) is not int or not 0 <= activity["progress"] <= 100:
             raise InvalidState("Progress must be 0–100")
         if type(activity.get("dateConfirmed")) is not bool:
@@ -126,6 +145,7 @@ def validate(document):
     plans, _ = _items(document, "plans", maximum=100)
     for plan in plans:
         _validate_plan(plan)
+    _serialize(document)
     return document
 
 
@@ -143,7 +163,7 @@ def read():
         if row is None:
             seed = json.loads((ROOT / "seed.json").read_text(encoding="utf-8"))
             validate(seed)
-            connection.execute("INSERT OR IGNORE INTO planner (id, document) VALUES (1, ?)", (json.dumps(seed),))
+            connection.execute("INSERT OR IGNORE INTO planner (id, document) VALUES (1, ?)", (_serialize(seed),))
             row = connection.execute("SELECT document FROM planner WHERE id = 1").fetchone()
     document = json.loads(row[0])
     validate(document)
@@ -184,7 +204,7 @@ def write(document):
         if document["revision"] != current["revision"]:
             raise RevisionConflict("Workspace changed in another session. Reload and try again.")
         saved = {**_record_resolutions(document, current), "revision": current["revision"] + 1}
-        connection.execute("UPDATE planner SET document = ? WHERE id = 1", (json.dumps(saved),))
+        connection.execute("UPDATE planner SET document = ? WHERE id = 1", (_serialize(saved),))
     return saved
 
 
@@ -195,5 +215,5 @@ def replace_explicitly(document):
         row = connection.execute("SELECT document FROM planner WHERE id = 1").fetchone()
         revision = json.loads(row[0])["revision"] + 1 if row else 0
         saved = {**_record_resolutions(document, {"plans": []}), "revision": revision}
-        connection.execute("INSERT OR REPLACE INTO planner (id, document) VALUES (1, ?)", (json.dumps(saved),))
+        connection.execute("INSERT OR REPLACE INTO planner (id, document) VALUES (1, ?)", (_serialize(saved),))
     return saved

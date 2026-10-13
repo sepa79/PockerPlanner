@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/auth.js" defer></script>
   <script src="/progress.js" defer></script>
+  <script src="/schedule.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -29,14 +30,14 @@
       </nav>
       <div id="stats" class="stats" aria-label="Planner summary"></div>
     </div>
-    <div class="notice" id="date-notice" aria-label="Planning caveat"><span>◇</span><span id="date-notice-text" title="Confirm start dates in activity details. Durations are full planned calendar days."></span></div>
+    <div class="notice" id="date-notice" aria-label="Planning caveat"><span>◇</span><span id="date-notice-text" title="Confirm start dates in activity details. Durations are full planned days; weekends are optional per activity."></span></div>
     <section class="tab-panel workspace" role="tabpanel" id="panel-plan" aria-labelledby="tab-plan">
       <div class="plan-toolbar">
         <div class="calendar-controls"><button class="icon-button" id="previous-range" aria-label="Previous date range">‹</button><span id="range-label"></span><button class="icon-button" id="next-range" aria-label="Next date range">›</button><button class="button button-outline" id="jump-today">Today</button><select id="range-days" aria-label="Visible calendar range"><option value="7">7 days</option><option value="14">14 days</option><option value="21" selected>21 days</option><option value="28">28 days</option></select></div>
         <div class="legend"><span><i class="legend-line"></i>Today</span><span><i class="legend-swatch tentative"></i>Unconfirmed</span><span><i class="legend-swatch blocked"></i>Blocked</span></div>
       </div>
       <div id="gantt" class="gantt-scroll" aria-label="Interactive calendar Gantt chart"></div>
-      <div class="panel-footnote">Click to edit · Drag to reschedule · Full planned calendar days</div>
+      <div class="panel-footnote">Click to edit · Drag to reschedule · Weekdays by default · Include weekends per activity</div>
     </section>
     <section class="tab-panel" role="tabpanel" id="panel-issues" aria-labelledby="tab-issues" hidden>
       <div class="panel-toolbar"><span>Issues</span><div class="section-actions"><select id="issue-status-filter" aria-label="Issue status"><option value="active">Active</option><option value="history">History</option></select><button class="button button-outline" id="blocker-filter">All issues</button><button class="button button-primary edit-only" id="add-issue" hidden>＋ Issue</button></div></div>

@@ -4,7 +4,7 @@ import json
 import os
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 AUTH_BASE = os.environ.get("POCKETHIVE_AUTH_BASE_URL", "").rstrip("/")
 EDITOR_USERNAME = "local-admin"
@@ -14,6 +14,14 @@ class AuthError(Exception):
     def __init__(self, message, status):
         super().__init__(message)
         self.status = status
+
+
+class RejectAuthRedirects(HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, new_url):
+        return None
+
+
+AUTH_OPENER = build_opener(RejectAuthRedirects())
 
 
 def _request(path, authorization=None, document=None):
@@ -28,9 +36,12 @@ def _request(path, authorization=None, document=None):
         headers["Content-Type"] = "application/json"
         payload = json.dumps(document).encode("utf-8")
     try:
-        with urlopen(Request(AUTH_BASE + path, data=payload, headers=headers), timeout=5) as response:
+        with AUTH_OPENER.open(Request(AUTH_BASE + path, data=payload, headers=headers), timeout=5) as response:
             return json.loads(response.read(1024 * 1024))
     except HTTPError as error:
+        error.close()
+        if 300 <= error.code < 400:
+            raise AuthError("PocketHive authentication redirects are not allowed", 503) from None
         if error.code in (400, 401, 403):
             raise AuthError("PocketHive rejected the session or login", error.code) from None
         raise AuthError("PocketHive authentication is unavailable", 503) from None

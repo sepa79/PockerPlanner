@@ -1,16 +1,15 @@
 import json
 import tempfile
-import threading
 import unittest
-from http.server import ThreadingHTTPServer
+from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+
+from starlette.testclient import TestClient
 
 import planner_store
 import pockethive_auth
-from server import Handler, WEB
+from server import create_app, WEB
 
 
 class AccessTests(unittest.TestCase):
@@ -20,15 +19,11 @@ class AccessTests(unittest.TestCase):
         planner_store.DATABASE = Path(self.directory.name) / "planner.sqlite3"
         planner_store.read()
         self.example = json.loads((planner_store.ROOT / "web" / "example-plan.json").read_text())
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
-        self.base = f"http://127.0.0.1:{self.server.server_port}"
+        self.client = TestClient(create_app(), base_url="http://localhost")
+        self.client.__enter__()
 
     def tearDown(self):
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join()
+        self.client.__exit__(None, None, None)
         planner_store.DATABASE = self.original_database
         self.directory.cleanup()
 
@@ -36,12 +31,8 @@ class AccessTests(unittest.TestCase):
         headers = {"Content-Type": "application/json"}
         if token:
             headers["Authorization"] = "Bearer " + token
-        payload = json.dumps(document).encode() if document is not None else None
-        try:
-            with urlopen(Request(self.base + path, data=payload, method=method, headers=headers)) as response:
-                return response.status, json.load(response)
-        except HTTPError as error:
-            return error.code, json.load(error)
+        response = self.client.request(method, path, json=document, headers=headers)
+        return response.status_code, response.json()
 
     def identity(self, path, authorization=None, document=None):
         if authorization == "Bearer admin-token":
@@ -64,10 +55,19 @@ class AccessTests(unittest.TestCase):
     def test_public_brand_assets_are_served_as_svg(self):
         for filename in ("pocketplanner-logo.svg", "pocketplanner-mark.svg"):
             with self.subTest(filename=filename):
-                with urlopen(self.base + "/" + filename) as response:
-                    self.assertEqual(response.status, 200)
-                    self.assertEqual(response.headers.get_content_type(), "image/svg+xml")
-                    self.assertEqual(response.read(), (WEB / filename).read_bytes())
+                response = self.client.get("/" + filename)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.headers["content-type"], "image/svg+xml")
+                self.assertEqual(response.content, (WEB / filename).read_bytes())
+
+    def test_security_headers_allow_gantt_styles_but_not_inline_scripts(self):
+        response = self.client.get("/")
+        policy = response.headers["content-security-policy"]
+        self.assertIn("script-src 'self';", policy)
+        self.assertIn("style-src 'self' 'unsafe-inline';", policy)
+        self.assertNotIn("script-src 'self' 'unsafe-inline'", policy)
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
 
     def test_verified_local_admin_can_import_and_validation_is_enforced(self):
         with patch("pockethive_auth._request", side_effect=self.identity):
@@ -95,6 +95,16 @@ class AccessTests(unittest.TestCase):
             self.assertEqual(self.request("PUT", "/api/state", self.example)[0], 401)
             self.assertEqual(self.request("PUT", "/api/state", self.example, "forged-admin-token")[0], 503)
             self.assertEqual(planner_store.read()["plans"], [])
+
+    def test_noncanonical_dates_and_ids_are_rejected_at_the_api(self):
+        before = planner_store.read()
+        with patch("pockethive_auth._request", side_effect=self.identity):
+            for collection, field, value in (("activities", "start", "20261013"), ("issues", "discovered", "2026-W42-2"), ("streams", "id", "demo ")):
+                with self.subTest(collection=collection, field=field):
+                    document = deepcopy(self.example)
+                    document["plans"][0][collection][0][field] = value
+                    self.assertEqual(self.request("PUT", "/api/state", document, "admin-token")[0], 400)
+                    self.assertEqual(planner_store.read(), before)
 
 
 if __name__ == "__main__":

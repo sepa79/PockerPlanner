@@ -4,6 +4,8 @@ services:
     image: pockerplanner-local:latest
     environment:
       POCKETHIVE_AUTH_BASE_URL: "${POCKETHIVE_AUTH_BASE_URL:-}"
+      POCKERPLANNER_MCP_ALLOWED_HOSTS: "${POCKERPLANNER_MCP_ALLOWED_HOSTS:-}"
+      POCKERPLANNER_MCP_ALLOWED_ORIGINS: "${POCKERPLANNER_MCP_ALLOWED_ORIGINS:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

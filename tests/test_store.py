@@ -58,6 +58,41 @@ class StoreTests(unittest.TestCase):
         with self.assertRaises(planner_store.InvalidState):
             planner_store.write(unsupported)
 
+    def test_weekend_option_is_optional_boolean_and_survives_save(self):
+        planner_store.read()
+        document = deepcopy(self.example)
+        document["plans"][0]["activities"][0].pop("includeWeekends")
+        saved = planner_store.write(document)
+        self.assertNotIn("includeWeekends", planner_store.read()["plans"][0]["activities"][0])
+        for invalid in (None, 0, 1, "false", [], {}):
+            with self.subTest(value=invalid):
+                rejected = deepcopy(saved)
+                rejected["plans"][0]["activities"][0]["includeWeekends"] = invalid
+                with self.assertRaises(planner_store.InvalidState):
+                    planner_store.write(rejected)
+                self.assertEqual(planner_store.read(), saved)
+        for included in (True, False):
+            saved["plans"][0]["activities"][0]["includeWeekends"] = included
+            saved = planner_store.write(saved)
+            self.assertEqual(planner_store.read(), saved)
+            self.assertIs(saved["plans"][0]["activities"][0]["includeWeekends"], included)
+
+    def test_activity_status_limit_does_not_reduce_other_descriptions(self):
+        planner_store.read()
+        document = deepcopy(self.example)
+        plan = document["plans"][0]
+        plan["description"] = "p" * 12000
+        plan["streams"][0]["description"] = "s" * 2000
+        plan["issues"][0]["description"] = "i" * 2000
+        plan["activities"][0]["status"] = "a" * 1000
+        saved = planner_store.write(document)
+        self.assertEqual(planner_store.read(), saved)
+        rejected = deepcopy(saved)
+        rejected["plans"][0]["activities"][0]["status"] += "x"
+        with self.assertRaises(planner_store.InvalidState):
+            planner_store.write(rejected)
+        self.assertEqual(planner_store.read(), saved)
+
     def test_explicit_replacement_of_legacy_database(self):
         planner_store.read()
         legacy = {"revision": 8, "streams": [], "activityTypes": [], "activities": [], "issues": []}
