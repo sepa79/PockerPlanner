@@ -71,9 +71,15 @@ def _validate_plan(plan):
     for issue in issues:
         _text(issue.get("title"), "issue title", 160, True)
         _text(issue.get("description"), "issue description")
-        _text(issue.get("scope"), "issue scope", 100)
+        if issue.get("scope") not in ("ALL", "STREAMS"):
+            raise InvalidState("Issue scope must be ALL or STREAMS")
+        targets = issue.get("streamIds")
+        if not isinstance(targets, list) or any(not isinstance(target, str) for target in targets) or len(targets) != len(set(targets)) or any(target not in stream_ids for target in targets):
+            raise InvalidState("Issue refers to an invalid stream")
+        if (issue["scope"] == "ALL" and targets) or (issue["scope"] == "STREAMS" and not targets):
+            raise InvalidState("Select ALL or at least one affected stream")
         _url(issue.get("jiraUrl"), "issue Jira URL")
-        if type(issue.get("open")) is not bool or type(issue.get("descriptionIncomplete")) is not bool:
+        if type(issue.get("open")) is not bool or type(issue.get("blocker")) is not bool or type(issue.get("descriptionIncomplete")) is not bool:
             raise InvalidState("Invalid issue flags")
         try:
             date.fromisoformat(issue.get("discovered", ""))

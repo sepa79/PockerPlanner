@@ -18,6 +18,3 @@ project:
 components:
   - name: planner
     manifest: deploy/hiveforge/planner/hiveforge.yaml
-artifacts:
-  durablePaths:
-    - state/pockerplanner

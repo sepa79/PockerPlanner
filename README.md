@@ -30,6 +30,8 @@ Each plan has `id`, `name`, `description`, `streams`, `activityTypes`, `activiti
 
 Click activities to view details; local-admin can edit them and drag their bars. Durations are full planned calendar days, with inclusive end dates. Dates awaiting confirmation have dashed outlines. The cyan line marks today.
 
+Issues have a **Blocker** toggle and an **ALL / selected streams** scope. Open blockers tint and slowly pulse their affected streams red. A fully blocked plan displays the cartoon **BLOCKED!** entry warning, which can be acknowledged or opened directly in the blockers view. Acknowledgement does not resolve an issue.
+
 ## Local development
 
 Python 3.12+ is sufficient; no application dependencies need installation:

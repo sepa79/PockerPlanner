@@ -30,12 +30,12 @@
           "durationDays": 2,
           "progress": 0,
           "status": "Replace this sample with your own activity.",
-          "issueIds": [],
+          "issueIds": ["example-issue"],
           "dateConfirmed": false,
           "jiraUrl": ""
         }
       ],
-      "issues": []
+      "issues": [{"id": "example-issue", "title": "Example issue", "description": "A sample issue; toggle Blocker to mark its stream as blocked.", "scope": "STREAMS", "streamIds": ["demo"], "blocker": false, "discovered": "2026-01-01", "open": true, "descriptionIncomplete": false, "jiraUrl": ""}]
     }
   ]
 }

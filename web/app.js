@@ -8,6 +8,8 @@ let editorKind;
 let editorId;
 let timelineStart = null;
 let ignoreClick = false;
+let onlyBlockers = false;
+let alertAcknowledged = false;
 let dayWidth = 44;
 let visibleDays = window.matchMedia("(max-width: 600px)").matches ? 7 : 21;
 const editor = document.getElementById("editor");
@@ -25,7 +27,8 @@ function dayDiff(first, second) { return Math.round((dateAt(second) - dateAt(fir
 function today() { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
 function shortDate(value) { return dateAt(value).toLocaleDateString("en-GB", {day: "numeric", month: "short", timeZone: "UTC"}); }
 function byId(collection, id) { return collection.find(item => item.id === id); }
-function openBlockers(activity) { return activity.issueIds.map(id => byId(planner.issues, id)).filter(issue => issue?.open); }
+function blockersForStream(streamId) { return planner.issues.filter(issue => issue.open && issue.blocker && (issue.scope === "ALL" || issue.streamIds.includes(streamId))); }
+function openBlockers(activity) { return blockersForStream(activity.streamId); }
 function isOverdue(activity) { return activity.progress < 100 && addDays(activity.start, activity.durationDays - 1) < today(); }
 function uid() { return Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, "0")).join(""); }
 function toast(message) { const element = document.getElementById("toast"); element.textContent = message; element.classList.add("show"); clearTimeout(toast.timer); toast.timer = setTimeout(() => element.classList.remove("show"), 3200); }
@@ -113,8 +116,9 @@ function renderGantt() {
   }).join("");
   let html = `<div class="gantt-inner" style="--day-width:${dayWidth}px"><div class="gantt-row header"><div class="row-label">Stream / activity</div><div class="track" style="width:${width}px">${header}</div></div>`;
   for (const stream of planner.streams) {
+    const blockedClass = blockersForStream(stream.id).length ? " blocked-stream" : "";
     const activities = planner.activities.filter(activity => activity.streamId === stream.id).sort((first, second) => first.start.localeCompare(second.start));
-    html += `<div class="gantt-row group"><div class="row-label"><span title="${escapeHtml(stream.description)}">${escapeHtml(stream.name)}</span><button class="stream-edit" data-edit="stream" data-id="${escapeHtml(stream.id)}" aria-label="Edit ${escapeHtml(stream.name)}">✎</button></div><div class="track" style="width:${width}px">${trackDecorations(timelineStart, count, todayOffset, true)}</div></div>`;
+    html += `<div class="gantt-row group${blockedClass}"><div class="row-label"><span title="${escapeHtml(stream.description)}">${escapeHtml(stream.name)}${blockedClass ? " ◇" : ""}</span><button class="stream-edit" data-edit="stream" data-id="${escapeHtml(stream.id)}" aria-label="Edit ${escapeHtml(stream.name)}">✎</button></div><div class="track" style="width:${width}px">${trackDecorations(timelineStart, count, todayOffset, true)}</div></div>`;
     for (const activity of activities) {
       const type = byId(planner.activityTypes, activity.typeId);
       const blockers = openBlockers(activity);
@@ -129,7 +133,7 @@ function renderGantt() {
       const progressEnd = startOffset + activity.durationDays * activity.progress / 100;
       const visibleProgress = Math.max(0, Math.min(100, (progressEnd - visibleStart) / Math.max(1, visibleEnd - visibleStart) * 100));
       const bar = barWidth > 0 ? `<button class="bar ${activity.dateConfirmed ? "" : "tentative"} ${blockers.length ? "blocked" : ""}" style="left:${left}px;width:${barWidth}px;--bar-color:${type.color}" data-edit="activity" data-id="${escapeHtml(activity.id)}" title="${escapeHtml(title)}"><span class="bar-fill" style="width:${visibleProgress}%"></span><span class="bar-label">${barWidth > 85 ? escapeHtml(activity.name) : ""}</span><span class="bar-progress">${barWidth > 35 ? `${activity.progress}%` : ""}</span></button>` : "";
-      html += `<div class="gantt-row activity-row"><div class="row-label"><button class="activity-name" data-edit="activity" data-id="${escapeHtml(activity.id)}" title="${escapeHtml(title)}">${escapeHtml(activity.name)}</button><span class="activity-sub ${blockers.length || overdue ? "blocked-text" : ""}" title="${escapeHtml(title)}">${status}</span></div><div class="track" style="width:${width}px">${trackDecorations(timelineStart, count, todayOffset)}${bar}</div></div>`;
+      html += `<div class="gantt-row activity-row${blockedClass}"><div class="row-label"><button class="activity-name" data-edit="activity" data-id="${escapeHtml(activity.id)}" title="${escapeHtml(title)}">${escapeHtml(activity.name)}</button><span class="activity-sub ${blockers.length || overdue ? "blocked-text" : ""}" title="${escapeHtml(title)}">${status}</span></div><div class="track" style="width:${width}px">${trackDecorations(timelineStart, count, todayOffset)}${bar}</div></div>`;
     }
   }
   gantt.innerHTML = html + (planner.streams.length ? "" : `<div class="empty">No activities yet. Select or create a plan from Plans, or import a workspace from Data.</div>`) + "</div>";
@@ -137,10 +141,13 @@ function renderGantt() {
 
 function renderIssues() {
   const activities = planner.activities;
-  document.getElementById("issues").innerHTML = planner.issues.length ? planner.issues.map((issue, index) => {
+  const issues = onlyBlockers ? planner.issues.filter(issue => issue.open && issue.blocker) : planner.issues;
+  document.getElementById("blocker-filter").textContent = onlyBlockers ? "Blockers only" : "All issues";
+  document.getElementById("issues").innerHTML = issues.length ? issues.map((issue, index) => {
     const linked = activities.filter(activity => activity.issueIds.includes(issue.id));
     const names = [...new Set(linked.map(activity => byId(planner.streams, activity.streamId)?.name))].filter(Boolean);
-    return `<article class="issue"><span class="issue-index">${String(index + 1).padStart(2, "0")}</span><div class="issue-main"><div class="issue-top"><button class="issue-title" data-edit="issue" data-id="${escapeHtml(issue.id)}">${escapeHtml(issue.title)}</button><span class="issue-status ${issue.open ? "" : "resolved"}">${issue.open ? "BLOCKING" : "RESOLVED"}</span></div><p class="issue-desc">${escapeHtml(issue.description)} ${issue.descriptionIncomplete ? "(Source description incomplete.)" : ""}</p><div class="issue-foot"><span>DISCOVERED <b>${shortDate(issue.discovered)}</b></span><span>SCOPE <b>${escapeHtml(issue.scope)}</b></span><span>LINKED <b>${linked.length} activities / ${escapeHtml(names.join(", ") || "none")}</b></span>${issue.jiraUrl ? `<a href="${escapeHtml(issue.jiraUrl)}" target="_blank" rel="noopener noreferrer">Jira ↗</a>` : ""}</div></div></article>`;
+    const scope = issue.scope === "ALL" ? "ALL" : issue.streamIds.map(id => byId(planner.streams, id).name).join(", ");
+    return `<article class="issue ${issue.open && issue.blocker ? "blocking-issue" : ""}"><div class="issue-switch"><button class="blocker-toggle ${issue.blocker ? "active" : ""}" data-toggle-blocker="${escapeHtml(issue.id)}" aria-pressed="${issue.blocker}" ${window.PockerAuth.canEdit ? "" : "disabled"}>Blocker</button><button class="scope-link" data-edit="issue" data-id="${escapeHtml(issue.id)}">${escapeHtml(scope)} ▾</button></div><div class="issue-main"><div class="issue-top"><button class="issue-title" data-edit="issue" data-id="${escapeHtml(issue.id)}">${escapeHtml(issue.title)}</button>${issue.open ? "" : `<span class="issue-status resolved">Resolved</span>`}</div><p class="issue-desc">${escapeHtml(issue.description)} ${issue.descriptionIncomplete ? "(Source description incomplete.)" : ""}</p><div class="issue-foot"><span>DISCOVERED <b>${shortDate(issue.discovered)}</b></span><span>LINKED <b>${linked.length} activities / ${escapeHtml(names.join(", ") || "none")}</b></span>${issue.jiraUrl ? `<a href="${escapeHtml(issue.jiraUrl)}" target="_blank" rel="noopener noreferrer">Jira ↗</a>` : ""}</div></div></article>`;
   }).join("") : `<div class="empty">No issues yet.</div>`;
 }
 
@@ -155,6 +162,7 @@ function render() {
   renderStats();
   renderGantt();
   renderIssues();
+  renderBlockedAlert();
   document.getElementById("stream-list").innerHTML = planner.streams.map(stream => `<button class="stream-row" data-edit="stream" data-id="${escapeHtml(stream.id)}"><strong>${escapeHtml(stream.name)}</strong><span class="stream-description">${escapeHtml(stream.description)}</span><span>${planner.activities.filter(activity => activity.streamId === stream.id).length} activities</span></button>`).join("") || `<div class="empty">No streams yet.</div>`;
   document.getElementById("type-list").innerHTML = planner.activityTypes.map(type => `<button class="type-row" data-type-id="${escapeHtml(type.id)}"><span style="--type-color:${type.color}"></span>${escapeHtml(type.name)}<span>EDIT ↗</span></button>`).join("") || `<div class="empty">No activity types yet.</div>`;
 }
@@ -190,13 +198,18 @@ function openEditor(kind, id = null) {
     fields.innerHTML = field("name", "Plan name", item?.name || "", "text", "required maxlength=160") + `<div class="field"><label for="field-description">Plan description / testing approach</label><textarea id="field-description" name="description" maxlength="12000" rows="12">${escapeHtml(item?.description || "")}</textarea></div>`;
   } else if (kind === "activity") {
     const issues = planner.issues.map(issue => `<label class="blocker-option"><input type="checkbox" name="issueIds" value="${escapeHtml(issue.id)}" ${item?.issueIds.includes(issue.id) ? "checked" : ""}>${escapeHtml(issue.title)}</label>`).join("");
-    fields.innerHTML = field("name", "Activity name", item?.name || "", "text", "required maxlength=160") + `<div class="form-grid">${select("streamId", "Stream", planner.streams, item?.streamId)}${select("typeId", "Activity type", planner.activityTypes, item?.typeId)}${field("start", "Start date", item?.start || today(), "date", "required")}${field("durationDays", "Full planned duration · days", item?.durationDays ?? 1, "number", "required min=1 max=365 step=1")}${field("progress", "Progress · %", item?.progress ?? 0, "number", "required min=0 max=100 step=1")}</div><p class="form-hint">Duration is the total calendar time planned, never the time left.</p><label class="check-field"><input type="checkbox" name="dateConfirmed" ${item?.dateConfirmed ? "checked" : ""}>Start date confirmed by team</label>${area("status", "Status / description", item?.status)}<span class="field-label">Assigned blockers</span><div class="blocker-list">${issues || "<span class='form-hint'>No issues yet. Add one from the main screen.</span>"}</div>${field("jiraUrl", "Jira ticket link · optional HTTPS", item?.jiraUrl || "", "url", "placeholder='https://…'")}${item?.jiraUrl ? `<a class="external-link" href="${escapeHtml(item.jiraUrl)}" target="_blank" rel="noopener noreferrer">Open Jira ticket ↗</a>` : ""}`;
+    fields.innerHTML = field("name", "Activity name", item?.name || "", "text", "required maxlength=160") + `<div class="form-grid">${select("streamId", "Stream", planner.streams, item?.streamId)}${select("typeId", "Activity type", planner.activityTypes, item?.typeId)}${field("start", "Start date", item?.start || today(), "date", "required")}${field("durationDays", "Full planned duration · days", item?.durationDays ?? 1, "number", "required min=1 max=365 step=1")}${field("progress", "Progress · %", item?.progress ?? 0, "number", "required min=0 max=100 step=1")}</div><p class="form-hint">Duration is the total calendar time planned, never the time left.</p><label class="check-field"><input type="checkbox" name="dateConfirmed" ${item?.dateConfirmed ? "checked" : ""}>Start date confirmed by team</label>${area("status", "Status / description", item?.status)}<span class="field-label">Linked issues</span><div class="blocker-list">${issues || "<span class='form-hint'>No issues yet. Add one from the main screen.</span>"}</div>${field("jiraUrl", "Jira ticket link · optional HTTPS", item?.jiraUrl || "", "url", "placeholder='https://…'")}${item?.jiraUrl ? `<a class="external-link" href="${escapeHtml(item.jiraUrl)}" target="_blank" rel="noopener noreferrer">Open Jira ticket ↗</a>` : ""}`;
   } else if (kind === "stream") {
     fields.innerHTML = field("name", "Stream name", item?.name, "text", "required maxlength=100") + area("description", "Purpose / context", item?.description);
   } else if (kind === "type") {
     fields.innerHTML = field("name", "Type name", item?.name, "text", "required maxlength=80") + field("color", "Timeline color", item?.color || "#ffc107", "color");
   } else {
-    fields.innerHTML = field("title", "Issue title", item?.title, "text", "required maxlength=160") + area("description", "What happened", item?.description) + `<div class="form-grid">${field("scope", "Scope", item?.scope || "", "text", "maxlength=100")}${field("discovered", "Discovered", item?.discovered || today(), "date", "required")}</div><label class="check-field"><input type="checkbox" name="open" ${item?.open ?? true ? "checked" : ""}>Open / blocking</label><label class="check-field"><input type="checkbox" name="descriptionIncomplete" ${item?.descriptionIncomplete ? "checked" : ""}>Source description incomplete</label>${field("jiraUrl", "Jira ticket link · optional HTTPS", item?.jiraUrl || "", "url", "placeholder='https://…'")}`;
+    const targets = planner.streams.map(stream => `<label class="blocker-option"><input type="checkbox" name="streamIds" value="${escapeHtml(stream.id)}" ${item?.streamIds.includes(stream.id) ? "checked" : ""}>${escapeHtml(stream.name)}</label>`).join("");
+    fields.innerHTML = field("title", "Issue title", item?.title, "text", "required maxlength=160") + area("description", "What happened", item?.description) + `<label class="check-field"><input type="checkbox" name="blocker" ${item?.blocker ? "checked" : ""}>Blocker</label><div class="form-grid">${select("scope", "Affects", [{id:"ALL",name:"ALL streams"},{id:"STREAMS",name:"Selected streams"}], item?.scope || "ALL")}${field("discovered", "Discovered", item?.discovered || today(), "date", "required")}</div><div class="blocker-list" id="scope-targets">${targets}</div><label class="check-field"><input type="checkbox" name="open" ${item?.open ?? true ? "checked" : ""}>Open</label><label class="check-field"><input type="checkbox" name="descriptionIncomplete" ${item?.descriptionIncomplete ? "checked" : ""}>Source description incomplete</label>${field("jiraUrl", "Jira ticket link · optional HTTPS", item?.jiraUrl || "", "url", "placeholder='https://…'")}`;
+    const scopeInput = fields.querySelector("[name=scope]");
+    const syncTargets = () => { document.getElementById("scope-targets").hidden = scopeInput.value === "ALL"; };
+    scopeInput.addEventListener("change", syncTargets);
+    syncTargets();
   }
   fields.querySelectorAll("input, select, textarea").forEach(input => { input.disabled = !window.PockerAuth.canEdit; });
   editor.showModal();
@@ -213,7 +226,7 @@ function formItem() {
   if (editorKind === "activity") return {id: editorId || uid(), name: text("name"), streamId: text("streamId"), typeId: text("typeId"), start: text("start"), durationDays: Number(text("durationDays")), progress: Number(text("progress")), dateConfirmed: values.has("dateConfirmed"), status: text("status"), issueIds: values.getAll("issueIds"), jiraUrl: text("jiraUrl")};
   if (editorKind === "stream") return {id: editorId || uid(), name: text("name"), description: text("description")};
   if (editorKind === "type") return {id: editorId || uid(), name: text("name"), color: text("color")};
-  return {id: editorId || uid(), title: text("title"), description: text("description"), scope: text("scope"), discovered: text("discovered"), open: values.has("open"), descriptionIncomplete: values.has("descriptionIncomplete"), jiraUrl: text("jiraUrl")};
+  return {id: editorId || uid(), title: text("title"), description: text("description"), scope: text("scope"), streamIds: text("scope") === "ALL" ? [] : values.getAll("streamIds"), blocker: values.has("blocker"), discovered: text("discovered"), open: values.has("open"), descriptionIncomplete: values.has("descriptionIncomplete"), jiraUrl: text("jiraUrl")};
 }
 
 form.addEventListener("submit", async event => {
@@ -282,6 +295,8 @@ document.getElementById("import-json").addEventListener("click", async event => 
     if (!confirm("Replace all current plans with this JSON file?")) return;
     await persist(imported);
     timelineStart = null;
+    alertAcknowledged = false;
+    render();
     result.textContent = "Workspace imported and saved.";
     selectTab("plan");
   } catch (error) {
@@ -361,12 +376,13 @@ function renderAccess() {
   button.title = identity.configured ? "PocketHive session" : "Set POCKETHIVE_AUTH_BASE_URL to enable sign in";
 }
 
-document.getElementById("active-plan").addEventListener("change", event => { activePlanId = event.target.value; timelineStart = null; selectCurrentPlan(); render(); });
+document.getElementById("active-plan").addEventListener("change", event => { activePlanId = event.target.value; timelineStart = null; alertAcknowledged = false; selectCurrentPlan(); render(); });
 document.getElementById("plan-list").addEventListener("click", event => {
   const button = event.target.closest("[data-select-plan]");
   if (!button) return;
   activePlanId = button.dataset.selectPlan;
   timelineStart = null;
+  alertAcknowledged = false;
   selectCurrentPlan();
   render();
   selectTab("plan");
@@ -391,4 +407,22 @@ async function start() {
   try { await window.PockerAuth.initialize(); } catch (error) { toast(error.message); }
   await load();
 }
+
+function renderBlockedAlert() {
+  const alert = document.getElementById("blocked-alert");
+  const allBlocked = planner.streams.length > 0 && planner.streams.every(stream => blockersForStream(stream.id).length > 0);
+  if (allBlocked && !alertAcknowledged && !alert.open) alert.showModal();
+  if ((!allBlocked || alertAcknowledged) && alert.open) alert.close();
+}
+
+document.getElementById("blocked-alert").addEventListener("cancel", event => event.preventDefault());
+document.getElementById("acknowledge-blocked").addEventListener("click", () => { alertAcknowledged = true; document.getElementById("blocked-alert").close(); });
+document.getElementById("show-blockers").addEventListener("click", () => { alertAcknowledged = true; document.getElementById("blocked-alert").close(); onlyBlockers = true; renderIssues(); selectTab("issues"); history.replaceState(null, "", "#issues"); });
+document.getElementById("blocker-filter").addEventListener("click", () => { onlyBlockers = !onlyBlockers; renderIssues(); });
+document.getElementById("issues").addEventListener("click", async event => {
+  const button = event.target.closest("[data-toggle-blocker]");
+  if (!button || !window.PockerAuth.canEdit) return;
+  try { await save(draft => { const issue = byId(draft.issues, button.dataset.toggleBlocker); issue.blocker = !issue.blocker; }); }
+  catch (error) { toast(error.message); }
+});
 start().catch(error => toast(error.message));

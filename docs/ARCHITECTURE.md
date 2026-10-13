@@ -16,7 +16,7 @@
 
 An activity has required `id`, `name`, `streamId`, `typeId`, `start`, `durationDays`, `progress`, `status`, `issueIds`, `dateConfirmed`, and `jiraUrl`. Duration is full planned calendar time, 1–365 days, with inclusive end date. Progress is 0–100. Dates use ISO calendar strings. Jira URLs are empty or HTTPS links; no Jira API is called.
 
-Activity types have `id`, `name`, and a hexadecimal color. Issues have `id`, `title`, `description`, `scope`, `discovered`, `open`, `descriptionIncomplete`, and `jiraUrl`. References resolve within their plan; duplicate IDs within one collection fail.
+Activity types have `id`, `name`, and a hexadecimal color. Issues have `id`, `title`, `description`, `scope`, `streamIds`, `blocker`, `discovered`, `open`, `descriptionIncomplete`, and `jiraUrl`. Scope is explicitly `ALL` with an empty target list, or `STREAMS` with at least one existing stream ID. An open blocker affects its scope. Activity `issueIds` are context links, not a second authority for blocker scope. References resolve within their plan; duplicate IDs within one collection fail.
 
 `PUT /api/state` requires a verified editor and the full versioned workspace. Matching revisions save atomically and increment the revision; stale revisions return 409. Invalid input returns 400. Anonymous writes return 401, non-editor writes return 403, and an unavailable auth owner denies authenticated writes with 503. Mutation success is the canonical saved document returned by the store.
 
@@ -33,6 +33,8 @@ Read-only access is the default, including when auth is not configured. The Pock
 ## Presentation and deployment
 
 The viewport contains bounded Plan, Issues, Streams, Types, Data, and Plans panels. Calendar windows are 7/14/21/28 days with explicit navigation. Plan selection and calendar placement communicate timing. There is no resource scheduling engine.
+
+Blocked stream rows pulse red. When all streams of the active plan are blocked, entry displays the animated `BLOCKED!` dialog. Acknowledgement is local to the current page/plan visit and does not resolve issues. The blockers action dismisses the dialog and filters Issues to open blockers. Reduced-motion mode uses a static warning and stream tint.
 
 The PocketHive Press Set uses ink `#080b16`, panel `#111626`, paper `#f7f8ff`, honey `#ffc107`, cyan `#36dfff`, violet `#b49aff`, muted `#a8b2c8`, and Arial typography. Authored type colors remain editable data.
 

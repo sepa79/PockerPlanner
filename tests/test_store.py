@@ -69,6 +69,24 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(planner_store.read()["revision"], 9)
         self.assertEqual(planner_store.read()["plans"], self.example["plans"])
 
+    def test_blocker_scopes_are_explicit_and_plan_local(self):
+        original = planner_store.read()
+        issue = {"id": "blocker", "title": "Connectivity", "description": "", "scope": "STREAMS", "streamIds": ["demo"], "blocker": True, "discovered": "2026-01-01", "open": True, "descriptionIncomplete": False, "jiraUrl": ""}
+        document = deepcopy(self.example)
+        document["plans"][0]["issues"] = [issue]
+        document["plans"][0]["activities"][0]["issueIds"] = ["blocker"]
+        invalid = deepcopy(document)
+        invalid["plans"][0]["issues"][0]["streamIds"] = ["missing"]
+        with self.assertRaises(planner_store.InvalidState):
+            planner_store.write(invalid)
+        invalid = deepcopy(document)
+        invalid["plans"][0]["issues"][0]["scope"] = "ALL"
+        with self.assertRaises(planner_store.InvalidState):
+            planner_store.write(invalid)
+        self.assertEqual(planner_store.read(), original)
+        saved = planner_store.write(document)
+        self.assertEqual(saved["plans"][0]["issues"][0]["streamIds"], ["demo"])
+
 
 if __name__ == "__main__":
     unittest.main()

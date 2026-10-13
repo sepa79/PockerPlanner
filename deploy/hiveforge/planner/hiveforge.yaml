@@ -15,6 +15,3 @@ requirements:
     - POCKERPLANNER_PORT
     - POCKERPLANNER_NODE
     - POCKETHIVE_AUTH_BASE_URL
-  environmentRules:
-    - name: POCKETHIVE_AUTH_BASE_URL
-      format: http-url

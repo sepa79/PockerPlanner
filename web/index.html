@@ -38,7 +38,7 @@
       <div class="panel-footnote">Click to edit · Drag to reschedule · Full planned calendar days</div>
     </section>
     <section class="tab-panel" role="tabpanel" id="panel-issues" aria-labelledby="tab-issues" hidden>
-      <div class="panel-toolbar"><span>Shared blockers</span><button class="button button-primary edit-only" id="add-issue" hidden>＋ Issue</button></div>
+      <div class="panel-toolbar"><span>Issues</span><div class="section-actions"><button class="button button-outline" id="blocker-filter">All issues</button><button class="button button-primary edit-only" id="add-issue" hidden>＋ Issue</button></div></div>
       <div id="issues" class="panel-list issues-list"></div>
     </section>
     <section class="tab-panel" role="tabpanel" id="panel-streams" aria-labelledby="tab-streams" hidden>
@@ -67,6 +67,7 @@
   </main>
   <dialog id="editor"><form id="editor-form" method="dialog"><div class="dialog-top"><h2 id="editor-title"></h2><button type="button" class="icon-button" id="close-editor" aria-label="Close">×</button></div><div id="editor-fields"></div><div class="dialog-actions"><button type="button" class="button button-danger" id="delete-item">Delete</button><span></span><button type="button" class="button button-outline" id="cancel-editor">Cancel</button><button type="submit" class="button button-primary">Save</button></div></form></dialog>
   <dialog id="auth-dialog"><form id="auth-form"><div class="dialog-top"><h2>Sign in with PocketHive</h2><button type="button" class="icon-button" id="close-auth" aria-label="Close sign in">×</button></div><label class="field">PocketHive username<input name="username" id="auth-username" value="local-admin" autocomplete="username" required></label><p class="form-hint">The existing PocketHive DEV login provides the session. Only local-admin can edit; other identities remain view-only.</p><p id="auth-error" role="status"></p><div class="dialog-actions"><span></span><button class="button button-primary" type="submit">Sign in</button></div></form></dialog>
+  <dialog id="blocked-alert" aria-labelledby="blocked-title"><h2 id="blocked-title">BLOCKED!</h2><p>Every stream in this plan is blocked.</p><div class="blocked-actions"><button class="button button-primary" id="acknowledge-blocked">Acknowledged</button><button class="button button-outline" id="show-blockers">Show me the blockers</button></div></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
