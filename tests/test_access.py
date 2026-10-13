@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 
 import planner_store
 import pockethive_auth
-from server import Handler
+from server import Handler, WEB
 
 
 class AccessTests(unittest.TestCase):
@@ -61,6 +61,14 @@ class AccessTests(unittest.TestCase):
             self.assertFalse(session["canEdit"])
             self.assertEqual(planner_store.read()["plans"], [])
 
+    def test_public_brand_assets_are_served_as_svg(self):
+        for filename in ("pocketplanner-logo.svg", "pocketplanner-mark.svg"):
+            with self.subTest(filename=filename):
+                with urlopen(self.base + "/" + filename) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.headers.get_content_type(), "image/svg+xml")
+                    self.assertEqual(response.read(), (WEB / filename).read_bytes())
+
     def test_verified_local_admin_can_import_and_validation_is_enforced(self):
         with patch("pockethive_auth._request", side_effect=self.identity):
             self.assertEqual(self.request("PUT", "/api/state", self.example, "admin-token")[0], 200)
@@ -75,6 +83,18 @@ class AccessTests(unittest.TestCase):
         with patch("pockethive_auth._request", return_value={"username": "local-admin", "active": False}):
             self.assertEqual(self.request("PUT", "/api/state", self.example, "admin-token")[0], 401)
         self.assertEqual(planner_store.read()["plans"], [])
+
+    def test_unconfigured_auth_keeps_the_application_view_only(self):
+        with patch("pockethive_auth.AUTH_BASE", ""):
+            self.assertEqual(self.request("GET", "/health")[0], 200)
+            self.assertEqual(self.request("GET", "/api/state")[0], 200)
+            status, session = self.request("GET", "/api/session")
+            self.assertEqual(status, 200)
+            self.assertEqual(session, {"user": None, "canEdit": False, "configured": False})
+            self.assertEqual(self.request("POST", "/api/session/login", {"username": "local-admin"})[0], 503)
+            self.assertEqual(self.request("PUT", "/api/state", self.example)[0], 401)
+            self.assertEqual(self.request("PUT", "/api/state", self.example, "forged-admin-token")[0], 503)
+            self.assertEqual(planner_store.read()["plans"], [])
 
 
 if __name__ == "__main__":

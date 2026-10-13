@@ -17,9 +17,9 @@
       - planner_node | length > 0
       - (planner_port | int) > 0
       - (planner_port | int) < 65536
-      - planner_auth_base.startswith('https://') or planner_auth_base.startswith('http://')
+      - planner_auth_base == '' or planner_auth_base.startswith('https://') or planner_auth_base.startswith('http://')
       - not planner_auth_base.endswith('/')
-    fail_msg: "Set the swarm profile, image, port, pinned node and PocketHive auth ingress explicitly."
+    fail_msg: "Set the swarm profile, image, port and pinned node explicitly. PocketHive auth is optional; when configured, use its public ingress without a trailing slash."
 
 - name: Create durable database directory
   ansible.builtin.file:

@@ -9,7 +9,9 @@ let editorId;
 let timelineStart = null;
 let ignoreClick = false;
 let onlyBlockers = false;
+let issueStatusFilter = "active";
 let alertAcknowledged = false;
+const collapsedStreams = new Map();
 let dayWidth = 44;
 let visibleDays = window.matchMedia("(max-width: 600px)").matches ? 7 : 21;
 const editor = document.getElementById("editor");
@@ -26,6 +28,7 @@ function addDays(value, days) { const date = dateAt(value); date.setUTCDate(date
 function dayDiff(first, second) { return Math.round((dateAt(second) - dateAt(first)) / 86400000); }
 function today() { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
 function shortDate(value) { return dateAt(value).toLocaleDateString("en-GB", {day: "numeric", month: "short", timeZone: "UTC"}); }
+function resolutionTime(value) { return value ? `<time datetime="${escapeHtml(value)}" title="${escapeHtml(value)}">${escapeHtml(new Date(value).toLocaleString("en-GB", {dateStyle: "medium", timeStyle: "short"}))}</time>` : "Not recorded"; }
 function byId(collection, id) { return collection.find(item => item.id === id); }
 function blockersForStream(streamId) { return planner.issues.filter(issue => issue.open && issue.blocker && (issue.scope === "ALL" || issue.streamIds.includes(streamId))); }
 function openBlockers(activity) { return blockersForStream(activity.streamId); }
@@ -80,7 +83,7 @@ function renderStats() {
   const activities = planner.activities;
   const blocked = activities.filter(activity => openBlockers(activity).length && activity.progress < 100).length;
   const overdue = activities.filter(isOverdue).length;
-  const progress = activities.length ? Math.round(activities.reduce((total, activity) => total + activity.progress, 0) / activities.length) : 0;
+  const progress = window.PockerProgress(activities) ?? 0;
   const cards = [["Activities", activities.length, ""], ["Progress", `${progress}%`, ""], ["Blocked", blocked, "alert"], ["Overdue", overdue, overdue ? "alert" : ""]];
   document.getElementById("stats").innerHTML = cards.map(([label, value, className]) => `<span class="stat ${className}"><span class="stat-value">${value}</span>${label}</span>`).join("");
   document.getElementById("issue-count").textContent = planner.issues.filter(issue => issue.open).length;
@@ -115,10 +118,29 @@ function renderGantt() {
     return `<span class="day ${date === today() ? "today" : ""}" style="width:${dayWidth}px">${weekday}<strong>${dateAt(date).getUTCDate()}</strong></span>`;
   }).join("");
   let html = `<div class="gantt-inner" style="--day-width:${dayWidth}px"><div class="gantt-row header"><div class="row-label">Stream / activity</div><div class="track" style="width:${width}px">${header}</div></div>`;
-  for (const stream of planner.streams) {
+  for (const [streamIndex, stream] of planner.streams.entries()) {
     const blockedClass = blockersForStream(stream.id).length ? " blocked-stream" : "";
     const activities = planner.activities.filter(activity => activity.streamId === stream.id).sort((first, second) => first.start.localeCompare(second.start));
-    html += `<div class="gantt-row group${blockedClass}"><div class="row-label"><span title="${escapeHtml(stream.description)}">${escapeHtml(stream.name)}${blockedClass ? " ◇" : ""}</span><button class="stream-edit" data-edit="stream" data-id="${escapeHtml(stream.id)}" aria-label="Edit ${escapeHtml(stream.name)}">✎</button></div><div class="track" style="width:${width}px">${trackDecorations(timelineStart, count, todayOffset, true)}</div></div>`;
+    const collapsed = collapsedStreams.get(activePlanId)?.has(stream.id) || false;
+    const progress = window.PockerProgress(activities);
+    const progressLabel = progress === null ? "—" : `${progress}%`;
+    const progressTitle = progress === null ? "No activities" : "Overall progress · average of all activity percentages";
+    let summary = "";
+    if (collapsed && activities.length) {
+      const first = activities[0].start;
+      const last = activities.map(activity => addDays(activity.start, activity.durationDays - 1)).sort().at(-1);
+      const startOffset = dayDiff(timelineStart, first);
+      const endOffset = dayDiff(timelineStart, last) + 1;
+      const visibleStart = Math.max(0, startOffset);
+      const visibleEnd = Math.min(count, endOffset);
+      const summaryWidth = (visibleEnd - visibleStart) * dayWidth - 4;
+      const progressEnd = startOffset + (endOffset - startOffset) * progress / 100;
+      const visibleProgress = Math.max(0, Math.min(100, (progressEnd - visibleStart) / Math.max(1, visibleEnd - visibleStart) * 100));
+      const title = `${stream.name} · ${activities.length} activities · ${shortDate(first)} – ${shortDate(last)} · ${progressLabel} overall · Range includes gaps between activities`;
+      if (summaryWidth > 0) summary = `<span class="stream-summary" style="left:${visibleStart * dayWidth + 2}px;width:${summaryWidth}px" title="${escapeHtml(title)}"><span class="stream-summary-fill" style="width:${visibleProgress}%"></span><span class="stream-summary-label">${escapeHtml(stream.name)}</span></span>`;
+    }
+    const activityGroupId = `stream-activities-${streamIndex}`;
+    html += `<div class="gantt-row group${blockedClass}"><div class="row-label"><button class="stream-toggle" data-toggle-stream="${escapeHtml(stream.id)}" aria-expanded="${!collapsed}" aria-controls="${activityGroupId}" aria-label="${collapsed ? "Expand" : "Collapse"} ${escapeHtml(stream.name)}" title="${escapeHtml(stream.description)}"><span class="stream-chevron" aria-hidden="true">${collapsed ? "▸" : "▾"}</span><span class="stream-name">${escapeHtml(stream.name)}${blockedClass ? " ◇" : ""}</span></button><span class="stream-progress" title="${progressTitle}" aria-label="${escapeHtml(stream.name)} overall progress: ${progress === null ? "no activities" : progressLabel}">${progressLabel}</span><button class="stream-edit" data-edit="stream" data-id="${escapeHtml(stream.id)}" aria-label="Edit ${escapeHtml(stream.name)}">✎</button></div><div class="track" style="width:${width}px">${trackDecorations(timelineStart, count, todayOffset, true)}${summary}</div></div><div id="${activityGroupId}" ${collapsed ? "hidden" : ""}>`;
     for (const activity of activities) {
       const type = byId(planner.activityTypes, activity.typeId);
       const blockers = openBlockers(activity);
@@ -135,20 +157,23 @@ function renderGantt() {
       const bar = barWidth > 0 ? `<button class="bar ${activity.dateConfirmed ? "" : "tentative"} ${blockers.length ? "blocked" : ""}" style="left:${left}px;width:${barWidth}px;--bar-color:${type.color}" data-edit="activity" data-id="${escapeHtml(activity.id)}" title="${escapeHtml(title)}"><span class="bar-fill" style="width:${visibleProgress}%"></span><span class="bar-label">${barWidth > 85 ? escapeHtml(activity.name) : ""}</span><span class="bar-progress">${barWidth > 35 ? `${activity.progress}%` : ""}</span></button>` : "";
       html += `<div class="gantt-row activity-row${blockedClass}"><div class="row-label"><button class="activity-name" data-edit="activity" data-id="${escapeHtml(activity.id)}" title="${escapeHtml(title)}">${escapeHtml(activity.name)}</button><span class="activity-sub ${blockers.length || overdue ? "blocked-text" : ""}" title="${escapeHtml(title)}">${status}</span></div><div class="track" style="width:${width}px">${trackDecorations(timelineStart, count, todayOffset)}${bar}</div></div>`;
     }
+    html += "</div>";
   }
   gantt.innerHTML = html + (planner.streams.length ? "" : `<div class="empty">No activities yet. Select or create a plan from Plans, or import a workspace from Data.</div>`) + "</div>";
 }
 
 function renderIssues() {
   const activities = planner.activities;
-  const issues = onlyBlockers ? planner.issues.filter(issue => issue.open && issue.blocker) : planner.issues;
+  const issues = planner.issues.filter(issue => issue.open === (issueStatusFilter === "active") && (!onlyBlockers || issue.blocker));
+  document.getElementById("issue-status-filter").value = issueStatusFilter;
   document.getElementById("blocker-filter").textContent = onlyBlockers ? "Blockers only" : "All issues";
   document.getElementById("issues").innerHTML = issues.length ? issues.map((issue, index) => {
     const linked = activities.filter(activity => activity.issueIds.includes(issue.id));
     const names = [...new Set(linked.map(activity => byId(planner.streams, activity.streamId)?.name))].filter(Boolean);
     const scope = issue.scope === "ALL" ? "ALL" : issue.streamIds.map(id => byId(planner.streams, id).name).join(", ");
-    return `<article class="issue ${issue.open && issue.blocker ? "blocking-issue" : ""}"><div class="issue-switch"><button class="blocker-toggle ${issue.blocker ? "active" : ""}" data-toggle-blocker="${escapeHtml(issue.id)}" aria-pressed="${issue.blocker}" ${window.PockerAuth.canEdit ? "" : "disabled"}>Blocker</button><button class="scope-link" data-edit="issue" data-id="${escapeHtml(issue.id)}">${escapeHtml(scope)} ▾</button></div><div class="issue-main"><div class="issue-top"><button class="issue-title" data-edit="issue" data-id="${escapeHtml(issue.id)}">${escapeHtml(issue.title)}</button>${issue.open ? "" : `<span class="issue-status resolved">Resolved</span>`}</div><p class="issue-desc">${escapeHtml(issue.description)} ${issue.descriptionIncomplete ? "(Source description incomplete.)" : ""}</p><div class="issue-foot"><span>DISCOVERED <b>${shortDate(issue.discovered)}</b></span><span>LINKED <b>${linked.length} activities / ${escapeHtml(names.join(", ") || "none")}</b></span>${issue.jiraUrl ? `<a href="${escapeHtml(issue.jiraUrl)}" target="_blank" rel="noopener noreferrer">Jira ↗</a>` : ""}</div></div></article>`;
-  }).join("") : `<div class="empty">No issues yet.</div>`;
+    const resolved = issue.open ? "" : `<span>RESOLVED <b>${resolutionTime(issue.resolvedAt)}</b></span>`;
+    return `<article class="issue ${issue.open && issue.blocker ? "blocking-issue" : ""}"><div class="issue-labels"><span class="issue-kind ${issue.blocker ? "blocker" : ""}">${issue.blocker ? "Blocker" : "Issue"}</span><span class="issue-scope">${escapeHtml(scope)}</span></div><div class="issue-main"><div class="issue-top"><button class="issue-title" data-edit="issue" data-id="${escapeHtml(issue.id)}">${escapeHtml(issue.title)}</button><div class="issue-flags">${issue.open ? "" : `<span class="issue-status resolved">Closed</span>`}${issue.descriptionIncomplete ? `<span class="issue-status" title="The description is missing details; this label does not block work.">incomplete</span>` : ""}</div></div><p class="issue-desc">${escapeHtml(issue.description)}</p><div class="issue-foot"><span>DISCOVERED <b>${shortDate(issue.discovered)}</b></span>${resolved}<span>LINKED <b>${linked.length} activities / ${escapeHtml(names.join(", ") || "none")}</b></span>${issue.jiraUrl ? `<a href="${escapeHtml(issue.jiraUrl)}" target="_blank" rel="noopener noreferrer">Jira ↗</a>` : ""}</div></div></article>`;
+  }).join("") : `<div class="empty">No ${issueStatusFilter === "active" ? "active" : "closed"} ${onlyBlockers ? "blockers" : "issues"}.</div>`;
 }
 
 function render() {
@@ -193,25 +218,43 @@ function openEditor(kind, id = null) {
   const item = id ? byId(collection, id) : null;
   document.getElementById("editor-title").textContent = `${id ? window.PockerAuth.canEdit ? "Edit" : "Details:" : "New"} ${kind === "type" ? "activity type" : kind}`;
   document.getElementById("delete-item").hidden = !id || !window.PockerAuth.canEdit;
-  document.querySelector("#editor-form button[type=submit]").hidden = !window.PockerAuth.canEdit;
+  document.querySelector("#editor-form .dialog-actions button[type=submit]").hidden = !window.PockerAuth.canEdit;
   if (kind === "plan") {
     fields.innerHTML = field("name", "Plan name", item?.name || "", "text", "required maxlength=160") + `<div class="field"><label for="field-description">Plan description / testing approach</label><textarea id="field-description" name="description" maxlength="12000" rows="12">${escapeHtml(item?.description || "")}</textarea></div>`;
   } else if (kind === "activity") {
     const issues = planner.issues.map(issue => `<label class="blocker-option"><input type="checkbox" name="issueIds" value="${escapeHtml(issue.id)}" ${item?.issueIds.includes(issue.id) ? "checked" : ""}>${escapeHtml(issue.title)}</label>`).join("");
-    fields.innerHTML = field("name", "Activity name", item?.name || "", "text", "required maxlength=160") + `<div class="form-grid">${select("streamId", "Stream", planner.streams, item?.streamId)}${select("typeId", "Activity type", planner.activityTypes, item?.typeId)}${field("start", "Start date", item?.start || today(), "date", "required")}${field("durationDays", "Full planned duration · days", item?.durationDays ?? 1, "number", "required min=1 max=365 step=1")}${field("progress", "Progress · %", item?.progress ?? 0, "number", "required min=0 max=100 step=1")}</div><p class="form-hint">Duration is the total calendar time planned, never the time left.</p><label class="check-field"><input type="checkbox" name="dateConfirmed" ${item?.dateConfirmed ? "checked" : ""}>Start date confirmed by team</label>${area("status", "Status / description", item?.status)}<span class="field-label">Linked issues</span><div class="blocker-list">${issues || "<span class='form-hint'>No issues yet. Add one from the main screen.</span>"}</div>${field("jiraUrl", "Jira ticket link · optional HTTPS", item?.jiraUrl || "", "url", "placeholder='https://…'")}${item?.jiraUrl ? `<a class="external-link" href="${escapeHtml(item.jiraUrl)}" target="_blank" rel="noopener noreferrer">Open Jira ticket ↗</a>` : ""}`;
+    const progress = item?.progress ?? 0;
+    const progressField = `<div class="field progress-field"><label for="field-progress">Progress · %</label><div class="progress-controls"><input id="field-progress-slider" type="range" min="0" max="100" step="1" value="${progress}" aria-label="Progress slider"><input id="field-progress" name="progress" type="number" min="0" max="100" step="1" value="${progress}" required><button id="progress-done" type="button" class="button button-outline" title="Set progress to 100%">Done</button></div></div>`;
+    fields.innerHTML = field("name", "Activity name", item?.name || "", "text", "required maxlength=160") + `<div class="form-grid">${select("streamId", "Stream", planner.streams, item?.streamId)}${select("typeId", "Activity type", planner.activityTypes, item?.typeId)}${field("start", "Start date", item?.start || today(), "date", "required")}${field("durationDays", "Full planned duration · days", item?.durationDays ?? 1, "number", "required min=1 max=365 step=1")}${progressField}</div><p class="form-hint">Duration is the total calendar time planned, never the time left.</p><label class="check-field"><input type="checkbox" name="dateConfirmed" ${item?.dateConfirmed ? "checked" : ""}>Start date confirmed by team</label>${area("status", "Status / description", item?.status)}<span class="field-label">Linked issues</span><div class="blocker-list">${issues || "<span class='form-hint'>No issues yet. Add one from the main screen.</span>"}</div>${field("jiraUrl", "Jira ticket link · optional HTTPS", item?.jiraUrl || "", "url", "placeholder='https://…'")}${item?.jiraUrl ? `<a class="external-link" href="${escapeHtml(item.jiraUrl)}" target="_blank" rel="noopener noreferrer">Open Jira ticket ↗</a>` : ""}`;
+    const progressInput = document.getElementById("field-progress");
+    const progressSlider = document.getElementById("field-progress-slider");
+    progressSlider.addEventListener("input", () => { progressInput.value = progressSlider.value; });
+    progressInput.addEventListener("input", () => { if (progressInput.value !== "" && progressInput.validity.valid) progressSlider.value = progressInput.value; });
+    document.getElementById("progress-done").addEventListener("click", () => { progressInput.value = "100"; progressSlider.value = "100"; });
   } else if (kind === "stream") {
     fields.innerHTML = field("name", "Stream name", item?.name, "text", "required maxlength=100") + area("description", "Purpose / context", item?.description);
   } else if (kind === "type") {
     fields.innerHTML = field("name", "Type name", item?.name, "text", "required maxlength=80") + field("color", "Timeline color", item?.color || "#ffc107", "color");
   } else {
     const targets = planner.streams.map(stream => `<label class="blocker-option"><input type="checkbox" name="streamIds" value="${escapeHtml(stream.id)}" ${item?.streamIds.includes(stream.id) ? "checked" : ""}>${escapeHtml(stream.name)}</label>`).join("");
-    fields.innerHTML = field("title", "Issue title", item?.title, "text", "required maxlength=160") + area("description", "What happened", item?.description) + `<label class="check-field"><input type="checkbox" name="blocker" ${item?.blocker ? "checked" : ""}>Blocker</label><div class="form-grid">${select("scope", "Affects", [{id:"ALL",name:"ALL streams"},{id:"STREAMS",name:"Selected streams"}], item?.scope || "ALL")}${field("discovered", "Discovered", item?.discovered || today(), "date", "required")}</div><div class="blocker-list" id="scope-targets">${targets}</div><label class="check-field"><input type="checkbox" name="open" ${item?.open ?? true ? "checked" : ""}>Open</label><label class="check-field"><input type="checkbox" name="descriptionIncomplete" ${item?.descriptionIncomplete ? "checked" : ""}>Source description incomplete</label>${field("jiraUrl", "Jira ticket link · optional HTTPS", item?.jiraUrl || "", "url", "placeholder='https://…'")}`;
+    const isOpen = item?.open ?? true;
+    const descriptionField = `<div class="field"><div class="issue-description-heading"><label for="field-description">Description</label><label class="check-field"><input type="checkbox" name="descriptionIncomplete" aria-describedby="incomplete-hint" ${item?.descriptionIncomplete ? "checked" : ""}>Incomplete</label></div><textarea id="field-description" name="description" maxlength="2000">${escapeHtml(item?.description || "")}</textarea><span class="form-hint" id="incomplete-hint">Marks missing details only; does not affect blockers or dates.</span></div>`;
+    const resolved = isOpen ? "" : `<p class="form-hint">Resolved: ${resolutionTime(item?.resolvedAt)}</p>`;
+    fields.innerHTML = field("title", "Issue title", item?.title, "text", "required maxlength=160") + descriptionField + `<label class="check-field"><input type="checkbox" name="blocker" ${item?.blocker ? "checked" : ""}>Blocker</label><div class="form-grid">${select("scope", "Affects", [{id:"ALL",name:"ALL streams"},{id:"STREAMS",name:"Selected streams"}], item?.scope || "ALL")}${field("discovered", "Discovered", item?.discovered || today(), "date", "required")}</div><div class="blocker-list" id="scope-targets">${targets}</div><div class="issue-lifecycle"><span>Status <span class="issue-status ${isOpen ? "" : "resolved"}">${isOpen ? "Open" : "Closed"}</span></span><input type="hidden" name="open" value="${isOpen}"><button type="button" id="issue-lifecycle-action" class="button button-outline" data-issue-open="${!isOpen}" title="Saves your edits and ${isOpen ? "closes" : "reopens"} this issue">${isOpen ? "Close issue" : "Reopen issue"}</button></div>${resolved}${field("jiraUrl", "Jira ticket link · optional HTTPS", item?.jiraUrl || "", "url", "placeholder='https://…'")}`;
+    const openInput = fields.querySelector("[name=open]");
+    const lifecycleAction = document.getElementById("issue-lifecycle-action");
+    lifecycleAction.hidden = !id;
+    lifecycleAction.addEventListener("click", () => {
+      const current = openInput.value;
+      openInput.value = lifecycleAction.dataset.issueOpen;
+      try { form.requestSubmit(); } finally { openInput.value = current; }
+    });
     const scopeInput = fields.querySelector("[name=scope]");
     const syncTargets = () => { document.getElementById("scope-targets").hidden = scopeInput.value === "ALL"; };
     scopeInput.addEventListener("change", syncTargets);
     syncTargets();
   }
-  fields.querySelectorAll("input, select, textarea").forEach(input => { input.disabled = !window.PockerAuth.canEdit; });
+  fields.querySelectorAll("input, select, textarea, button").forEach(input => { input.disabled = !window.PockerAuth.canEdit; });
   editor.showModal();
   fields.querySelector("input:not([type=checkbox])")?.focus();
 }
@@ -226,7 +269,7 @@ function formItem() {
   if (editorKind === "activity") return {id: editorId || uid(), name: text("name"), streamId: text("streamId"), typeId: text("typeId"), start: text("start"), durationDays: Number(text("durationDays")), progress: Number(text("progress")), dateConfirmed: values.has("dateConfirmed"), status: text("status"), issueIds: values.getAll("issueIds"), jiraUrl: text("jiraUrl")};
   if (editorKind === "stream") return {id: editorId || uid(), name: text("name"), description: text("description")};
   if (editorKind === "type") return {id: editorId || uid(), name: text("name"), color: text("color")};
-  return {id: editorId || uid(), title: text("title"), description: text("description"), scope: text("scope"), streamIds: text("scope") === "ALL" ? [] : values.getAll("streamIds"), blocker: values.has("blocker"), discovered: text("discovered"), open: values.has("open"), descriptionIncomplete: values.has("descriptionIncomplete"), jiraUrl: text("jiraUrl")};
+  return {id: editorId || uid(), title: text("title"), description: text("description"), scope: text("scope"), streamIds: text("scope") === "ALL" ? [] : values.getAll("streamIds"), blocker: values.has("blocker"), discovered: text("discovered"), open: text("open") === "true", descriptionIncomplete: values.has("descriptionIncomplete"), jiraUrl: text("jiraUrl")};
 }
 
 form.addEventListener("submit", async event => {
@@ -341,6 +384,18 @@ document.addEventListener("click", event => {
   if (button && !ignoreClick) openEditor(button.dataset.edit, button.dataset.id);
 });
 
+document.getElementById("gantt").addEventListener("click", event => {
+  const toggle = event.target.closest("[data-toggle-stream]");
+  if (!toggle) return;
+  const streamId = toggle.dataset.toggleStream;
+  const collapsed = collapsedStreams.get(activePlanId) || new Set();
+  if (collapsed.has(streamId)) collapsed.delete(streamId);
+  else collapsed.add(streamId);
+  collapsedStreams.set(activePlanId, collapsed);
+  renderGantt();
+  [...document.querySelectorAll("[data-toggle-stream]")].find(button => button.dataset.toggleStream === streamId).focus({preventScroll: true});
+});
+
 document.getElementById("gantt").addEventListener("pointerdown", event => {
   const bar = event.target.closest(".bar");
   if (!bar || event.button !== 0 || !window.PockerAuth.canEdit) return;
@@ -417,12 +472,7 @@ function renderBlockedAlert() {
 
 document.getElementById("blocked-alert").addEventListener("cancel", event => event.preventDefault());
 document.getElementById("acknowledge-blocked").addEventListener("click", () => { alertAcknowledged = true; document.getElementById("blocked-alert").close(); });
-document.getElementById("show-blockers").addEventListener("click", () => { alertAcknowledged = true; document.getElementById("blocked-alert").close(); onlyBlockers = true; renderIssues(); selectTab("issues"); history.replaceState(null, "", "#issues"); });
+document.getElementById("show-blockers").addEventListener("click", () => { alertAcknowledged = true; document.getElementById("blocked-alert").close(); onlyBlockers = true; issueStatusFilter = "active"; renderIssues(); selectTab("issues"); history.replaceState(null, "", "#issues"); });
 document.getElementById("blocker-filter").addEventListener("click", () => { onlyBlockers = !onlyBlockers; renderIssues(); });
-document.getElementById("issues").addEventListener("click", async event => {
-  const button = event.target.closest("[data-toggle-blocker]");
-  if (!button || !window.PockerAuth.canEdit) return;
-  try { await save(draft => { const issue = byId(draft.issues, button.dataset.toggleBlocker); issue.blocker = !issue.blocker; }); }
-  catch (error) { toast(error.message); }
-});
+document.getElementById("issue-status-filter").addEventListener("change", event => { issueStatusFilter = event.target.value; renderIssues(); });
 start().catch(error => toast(error.message));

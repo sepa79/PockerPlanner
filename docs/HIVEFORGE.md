@@ -11,7 +11,8 @@ Required non-secret runtime values:
 | `POCKERPLANNER_IMAGE` | Full image reference, preferably a pinned digest |
 | `POCKERPLANNER_PORT` | Published HTTP port, such as `8765` |
 | `POCKERPLANNER_NODE` | Explicit Swarm node hostname owning the database mount |
-| `POCKETHIVE_AUTH_BASE_URL` | PocketHive public ingress plus `/auth-service`, without a trailing slash |
+
+Optional runtime value: `POCKETHIVE_AUTH_BASE_URL` selects the PocketHive public ingress plus `/auth-service`, without a trailing slash. When unset, HiveForge explicitly renders an empty auth value and the application runs view-only. PocketHive does not need to be deployed to install or view the planner. Editing requires a working PocketHive auth owner; no local authentication bypass is provided.
 
 The profile requires a shared managed root and placement capability. HiveForge supplies `HIVEFORGE_BIND_SOURCE_DIR`. Durable data lives in `state/pockerplanner`, outside replace-managed artifacts, with UID/GID 10001. One replica and stop-first updates prevent competing SQLite writers. Updates do not replace plan data. Verify the recorded stack artifact and runtime through HiveForge MCP, then check `/health` and read-only/admin behavior through the published application address.
 

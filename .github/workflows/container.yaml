@@ -23,6 +23,10 @@ jobs:
           python -m unittest discover -s tests -v
           node --check web/app.js
           node --check web/auth.js
+          node --check web/progress.js
+          node --check tests/progress-editor.browser.js
+          node --check tests/issue-editor.browser.js
+          node --test tests/*.test.cjs
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -37,5 +41,6 @@ jobs:
           push: true
           tags: ghcr.io/sepa79/pockerplanner:latest
           labels: |
-            org.opencontainers.image.title=PockerPlanner
+            org.opencontainers.image.title=PocketPlanner
             org.opencontainers.image.source=https://github.com/sepa79/PockerPlanner
+            org.opencontainers.image.revision=${{ github.sha }}

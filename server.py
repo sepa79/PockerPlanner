@@ -10,7 +10,7 @@ from pockethive_auth import AuthError, access, login, require_editor
 
 
 WEB = Path(__file__).resolve().parent / "web"
-STATIC = {"/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"), "/auth.js": ("auth.js", "text/javascript"), "/style.css": ("style.css", "text/css"), "/brand.css": ("brand.css", "text/css"), "/pockethive-mark.svg": ("pockethive-mark.svg", "image/svg+xml"), "/example-plan.json": ("example-plan.json", "application/json")}
+STATIC = {"/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"), "/auth.js": ("auth.js", "text/javascript"), "/progress.js": ("progress.js", "text/javascript"), "/style.css": ("style.css", "text/css"), "/brand.css": ("brand.css", "text/css"), "/pocketplanner-logo.svg": ("pocketplanner-logo.svg", "image/svg+xml"), "/pocketplanner-mark.svg": ("pocketplanner-mark.svg", "image/svg+xml"), "/example-plan.json": ("example-plan.json", "application/json")}
 
 
 class Handler(BaseHTTPRequestHandler):

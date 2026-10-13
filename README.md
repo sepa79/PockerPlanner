@@ -1,4 +1,6 @@
-# PockerPlanner
+# PocketPlanner
+
+![PocketPlanner · simple test plan](web/pocketplanner-logo.svg)
 
 A compact calendar test planner with separate plans, descriptions, editable streams and activities, shared blockers, plain Jira links, and JSON import/export. The interface uses the PocketHive Press Set palette. Concurrency is expressed by task placement on the timeline.
 
@@ -30,7 +32,15 @@ Each plan has `id`, `name`, `description`, `streams`, `activityTypes`, `activiti
 
 Click activities to view details; local-admin can edit them and drag their bars. Durations are full planned calendar days, with inclusive end dates. Dates awaiting confirmation have dashed outlines. The cyan line marks today.
 
-Issues have a **Blocker** toggle and an **ALL / selected streams** scope. Open blockers tint and slowly pulse their affected streams red. A fully blocked plan displays the cartoon **BLOCKED!** entry warning, which can be acknowledged or opened directly in the blockers view. Acknowledgement does not resolve an issue.
+Activity progress has a synchronized 0–100 slider and numeric input with native stepper arrows. **Done** sets the draft progress to 100%; **Save** persists it, while **Cancel** discards it. All progress controls remain disabled for view-only users.
+
+Click a stream name or its arrow on the timeline to collapse or expand its activities, including in view-only mode. The header always shows overall progress: the rounded, equal-weight average of all activities in that stream, not just the visible date range. Empty streams show `—`. Collapsed streams retain a named summary bar from the first start to the last end, including any gaps. Expansion state is local to each plan during the current page visit and does not change saved plan data.
+
+Issues show noninteractive **Blocker / Issue** and **ALL / selected streams** labels. Click the issue title to open its details and edit the blocker flag or scope. Open blockers tint and slowly pulse their affected streams red. A fully blocked plan displays the cartoon **BLOCKED!** entry warning, which can be acknowledged or opened directly in the blockers view. Acknowledgement does not resolve an issue.
+
+The Issues list defaults to **Active**; select **History** for closed issues. The blocker filter works within either view. In issue details, **Close issue** or **Reopen issue** saves your current edits and changes the issue state. Closing a blocker removes its blocking effect without deleting links or changing other blockers. **Incomplete**, beside the description, is only a reminder that details are missing; flagged issues show an `incomplete` label in the list. It does not affect dates, progress, or blocker status.
+
+Closing an issue records `resolvedAt` automatically on the server. History and issue details display that time in your browser's timezone. Editing a closed issue preserves it; reopening clears it and a later closure records a new time. Older/imported closed issues without a recorded date show **Not recorded**. JSON can include a timezone-aware `resolvedAt` for newly imported historical issues; the app never guesses their closure date.
 
 ## Local development
 
@@ -62,6 +72,14 @@ The command validates and replaces the workspace. The server does not silently m
 python3 -m unittest discover -s tests -v
 node --check web/app.js
 node --check web/auth.js
+node --check web/progress.js
+node --check tests/progress-editor.browser.js
+node --check tests/issue-editor.browser.js
+node --test tests/*.test.cjs
 ```
 
 GitHub Actions runs checks and publishes the image on `main`. The container health endpoint is `/health`. Architectural ownership and HTTP contracts are in [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+`tests/progress-editor.browser.js` is a Playwright browser regression function for an isolated server with an empty temporary database and working PocketHive auth. Navigate the test browser to that server before invoking it with the page. It refuses to run against a workspace with existing plans. It checks progress editing, validation, persistence after reload, view-only controls, named collapsed bars, and mobile layout.
+
+`tests/issue-editor.browser.js` uses the same isolated-server precondition and checks Close/Reopen, validation, Save/Cancel, persistence, blocker scope, incomplete labels, Active/History filtering, the full-block warning action, creation, and view-only/mobile behavior.

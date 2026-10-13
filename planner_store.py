@@ -2,8 +2,10 @@
 
 import json
 import os
+import re
 import sqlite3
-from datetime import date
+from copy import deepcopy
+from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -81,6 +83,14 @@ def _validate_plan(plan):
         _url(issue.get("jiraUrl"), "issue Jira URL")
         if type(issue.get("open")) is not bool or type(issue.get("blocker")) is not bool or type(issue.get("descriptionIncomplete")) is not bool:
             raise InvalidState("Invalid issue flags")
+        resolved_at = issue.get("resolvedAt")
+        if resolved_at is not None:
+            try:
+                if not isinstance(resolved_at, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)", resolved_at):
+                    raise ValueError
+                datetime.fromisoformat(resolved_at)
+            except ValueError:
+                raise InvalidState("Issue resolvedAt must be an ISO timestamp with a timezone") from None
         try:
             date.fromisoformat(issue.get("discovered", ""))
         except (TypeError, ValueError):
@@ -140,6 +150,28 @@ def read():
     return document
 
 
+def _resolution_timestamp():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _record_resolutions(document, current):
+    saved = deepcopy(document)
+    previous_issues = {(plan["id"], issue["id"]): issue for plan in current["plans"] for issue in plan["issues"]}
+    timestamp = None
+    for plan in saved["plans"]:
+        for issue in plan["issues"]:
+            previous = previous_issues.get((plan["id"], issue["id"]))
+            if issue["open"]:
+                issue.pop("resolvedAt", None)
+            elif previous is not None and previous["open"]:
+                if timestamp is None:
+                    timestamp = _resolution_timestamp()
+                issue["resolvedAt"] = timestamp
+            elif previous is not None and previous.get("resolvedAt") is not None:
+                issue["resolvedAt"] = previous["resolvedAt"]
+    return saved
+
+
 def write(document):
     validate(document)
     with _connect() as connection:
@@ -151,7 +183,7 @@ def write(document):
         validate(current)
         if document["revision"] != current["revision"]:
             raise RevisionConflict("Workspace changed in another session. Reload and try again.")
-        saved = {**document, "revision": current["revision"] + 1}
+        saved = {**_record_resolutions(document, current), "revision": current["revision"] + 1}
         connection.execute("UPDATE planner SET document = ? WHERE id = 1", (json.dumps(saved),))
     return saved
 
@@ -162,6 +194,6 @@ def replace_explicitly(document):
         connection.execute("BEGIN IMMEDIATE")
         row = connection.execute("SELECT document FROM planner WHERE id = 1").fetchone()
         revision = json.loads(row[0])["revision"] + 1 if row else 0
-        saved = {**document, "revision": revision}
+        saved = {**_record_resolutions(document, {"plans": []}), "revision": revision}
         connection.execute("INSERT OR REPLACE INTO planner (id, document) VALUES (1, ?)", (json.dumps(saved),))
     return saved
