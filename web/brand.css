@@ -1,0 +1,12 @@
+:root {
+  color-scheme: dark;
+  --ink: #080b16;
+  --panel: #111626;
+  --paper: #f7f8ff;
+  --honey: #ffc107;
+  --cyan: #36dfff;
+  --violet: #b49aff;
+  --muted: #a8b2c8;
+  --border: rgba(180, 194, 225, .18);
+  --font: Arial, Helvetica, sans-serif;
+}

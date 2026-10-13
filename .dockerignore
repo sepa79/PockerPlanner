@@ -1,0 +1,11 @@
+.git
+.agents
+.codex
+.aws
+data
+tests
+__pycache__
+*.pyc
+.playwright-mcp
+.env
+.github

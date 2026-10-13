@@ -1,0 +1,47 @@
+---
+- name: Resolve explicit deployment values
+  ansible.builtin.set_fact:
+    planner_profile: "{{ lookup('env', 'HIVEFORGE_PROFILE') }}"
+    planner_bind_root: "{{ lookup('env', 'HIVEFORGE_BIND_SOURCE_DIR') }}"
+    planner_image: "{{ lookup('env', 'POCKERPLANNER_IMAGE') }}"
+    planner_port: "{{ lookup('env', 'POCKERPLANNER_PORT') }}"
+    planner_node: "{{ lookup('env', 'POCKERPLANNER_NODE') }}"
+    planner_auth_base: "{{ lookup('env', 'POCKETHIVE_AUTH_BASE_URL') }}"
+
+- name: Require supported profile and explicit configuration
+  ansible.builtin.assert:
+    that:
+      - planner_profile == 'swarm'
+      - planner_bind_root.startswith('/')
+      - planner_image | length > 0
+      - planner_node | length > 0
+      - (planner_port | int) > 0
+      - (planner_port | int) < 65536
+      - planner_auth_base.startswith('https://') or planner_auth_base.startswith('http://')
+      - not planner_auth_base.endswith('/')
+    fail_msg: "Set the swarm profile, image, port, pinned node and PocketHive auth ingress explicitly."
+
+- name: Create durable database directory
+  ansible.builtin.file:
+    path: /hf/state/pockerplanner
+    state: directory
+    owner: "10001"
+    group: "10001"
+    mode: "0750"
+
+- name: Create rendered stack directory
+  ansible.builtin.file:
+    path: /hf/stacks
+    state: directory
+    mode: "0755"
+
+- name: Render Compose artifact
+  ansible.builtin.template:
+    src: stack.yml.j2
+    dest: /hf/stacks/compose.yml
+    mode: "0644"
+
+- name: Validate the rendered Swarm configuration
+  ansible.builtin.command:
+    argv: [docker, stack, config, -c, /hf/stacks/compose.yml]
+  changed_when: false

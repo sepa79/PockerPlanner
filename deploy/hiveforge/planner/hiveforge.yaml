@@ -1,0 +1,20 @@
+kind: component
+component:
+  name: planner
+  project: pockerplanner
+deployment:
+  adapter: ansible
+  actions:
+    deploy:
+      playbook: ansible/deploy.yml
+    update:
+      playbook: ansible/update.yml
+requirements:
+  environment:
+    - POCKERPLANNER_IMAGE
+    - POCKERPLANNER_PORT
+    - POCKERPLANNER_NODE
+    - POCKETHIVE_AUTH_BASE_URL
+  environmentRules:
+    - name: POCKETHIVE_AUTH_BASE_URL
+      format: http-url

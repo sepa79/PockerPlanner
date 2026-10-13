@@ -1,0 +1,23 @@
+kind: project
+version: "0.5"
+project:
+  name: pockerplanner
+  repository: https://github.com/sepa79/PockerPlanner.git
+  actions: [deploy, update]
+  vars:
+    imageRepository.project: ghcr.io/sepa79/pockerplanner
+  profiles:
+    - id: swarm
+      runtime: docker-swarm
+      serviceSet: planner
+      requires:
+        managedRoot:
+          required: true
+          shared: true
+        capabilities: [placement]
+components:
+  - name: planner
+    manifest: deploy/hiveforge/planner/hiveforge.yaml
+artifacts:
+  durablePaths:
+    - state/pockerplanner

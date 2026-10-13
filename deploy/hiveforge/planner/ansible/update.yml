@@ -1,0 +1,7 @@
+---
+- name: Render PockerPlanner for HiveForge-owned update
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Render planner stack
+      ansible.builtin.include_tasks: render.yml
