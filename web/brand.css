@@ -8,5 +8,7 @@
   --violet: #b49aff;
   --muted: #a8b2c8;
   --border: rgba(180, 194, 225, .18);
+  --pause-color: #743044;
+  --weekend-color: #30394f;
   --font: Arial, Helvetica, sans-serif;
 }

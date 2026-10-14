@@ -8,11 +8,13 @@ A compact calendar test planner with separate plans, descriptions, editable stre
 
 **For agents:** [Working rules](AGENTS.md) · [Update plans through MCP](docs/MCP.md)
 
+[Changelog](CHANGELOG.md) tracks released and pending changes. The top bar shows the running application version; `-dev` marks unreleased work. `VERSION` is the canonical version source for the UI, MCP and container metadata.
+
 Python 3.12, SQLite, Starlette/Uvicorn, the official MCP Python SDK, and plain JavaScript. One container, one application replica, no Jira-sized workflow engine.
 
 ## Portainer
 
-The release image is `ghcr.io/sepa79/pocketplanner:v0.2.0`, built for amd64 and arm64 by GitHub Actions. It is public and can be pulled without a registry login.
+The release image is `ghcr.io/sepa79/pocketplanner:v0.2.1`, built for amd64 and arm64 by GitHub Actions. It is public and can be pulled without a registry login.
 
 1. Open **Stacks → Add stack → Web editor**.
 2. Paste [compose.yaml](compose.yaml).
@@ -30,7 +32,7 @@ Use the application in a trusted development/lab environment; PocketHive DEV log
 
 Use **Plans** to create a plan and maintain its name and testing-approach description. Select a plan from the header. Streams, activity types, activities, and issues belong to the selected plan.
 
-**Data → Export JSON** downloads all plans and their descriptions as compact JSON, without size-increasing indentation. **Import JSON** replaces the workspace after confirmation. The one-MiB file and saved-document limits remain enforced. Invalid imports leave the saved workspace unchanged. [Example JSON](web/example-plan.json) contains generic sample data only.
+**Data → Export JSON** downloads all plans and their descriptions as compact JSON, without size-increasing indentation. The filename uses the selected plan's name; forbidden filename characters become hyphens and reserved device names receive an underscore. An empty workspace uses `pocketplanner-plan.json`. The export still includes every plan, not just the selected one. **Import JSON** replaces the workspace after confirmation. The one-MiB file and saved-document limits remain enforced. Invalid imports leave the saved workspace unchanged. [Example JSON](web/example-plan.json) contains generic sample data only.
 
 The import format is:
 ```json
@@ -44,13 +46,17 @@ If another session or agent edits the workspace before your save, your change is
 
 While an update is being saved, the editor shows **Saving…** and temporarily disables its controls, including Cancel, Close and Escape. Wait for the response before starting the next edit; a late response cannot close a different draft. Controls become available again after success or failure. Activity status/description accepts up to 1,000 characters; stream/issue descriptions remain at 2,000 and plan descriptions at 12,000.
 
-Click activities to view details; local-admin can edit them and drag their bars. Durations are full planned **working days** by default, never remaining time. Saturday/Sunday remain visible but free on the timeline. Tick **Include weekends** inside an activity to count all calendar days instead. For example, three days starting Friday occupy Friday, Monday and Tuesday; with the checkbox enabled they occupy Friday, Saturday and Sunday. A weekday-only weekend start begins work on Monday, and dropping its bar on a weekend snaps forward to Monday. End dates and overdue indicators follow that same rule. Existing saved starts, durations and progress are not rewritten. Dates awaiting confirmation have dashed outlines. The cyan line marks today.
+Click outside an editor or sign-in dialog to close it. Unsaved editor changes are discarded, just like Cancel. Interior clicks and text-selection drags do not close dialogs; pending saves stay protected. The **BLOCKED!** warning still requires its acknowledgement or blockers button.
 
-Activity progress has a synchronized 0–100 slider and numeric input with native stepper arrows. **Done** sets the draft progress to 100%; **Save** persists it, while **Cancel** discards it. All progress controls remain disabled for view-only users.
+Click activities to view details; local-admin can edit them and drag their bars. Durations are full planned **working days** by default, never remaining time. Saturday/Sunday stay visible as grey sections inside one continuous task frame. Tick **Include weekends** inside an activity to count all calendar days instead. For example, three days starting Friday occupy Friday, Monday and Tuesday; with the checkbox enabled they occupy Friday, Saturday and Sunday. A weekday-only weekend start begins work on Monday, and dropping its bar on a weekend snaps forward to Monday. End dates and overdue indicators follow that same rule. Existing saved starts, durations and progress are not rewritten. Activities without a recorded actual start have dashed outlines. The cyan line marks today.
 
-Choose **Depends on · activity** in activity details to follow another activity in the same stream. **Depends on · stream** in stream details starts that stream after all its predecessor's activities finish. Starts follow automatically on the next eligible day, respecting **Include weekends**; independent activities in a dependent stream retain their calendar spacing. Moving a predecessor cascades to its successors. Auto-scheduled starts and bars cannot move independently: move the predecessor or clear the dependency. Cycles are rejected. Confirmation becomes pending again when an upstream edit changes a confirmed effective start. Timeline names indent at each activity-dependency level, without moving bars or percentage columns. Dependencies do not infer completion from progress or launch tests.
+Activity details have **Started → progress slider / numeric stepper → Done** in one row. Started and Done are staged until **Save**; **Cancel** discards them. The server records actual start/completion times. Details separately show full estimate, projected finish, actual elapsed calendar time and recorded blocker time (included in elapsed time, never added twice). Approximate remaining effort uses the percentage done. Controls remain disabled for viewers. The duration field has **− / value / +** controls for quick one-day edits; typing and keyboard stepping still work within 1–365. **Blocker delay** reports estimated calendar-day finish slip versus the same forecast without blockers, including dependency effects. It stays separate from measured blocking time; completed work has no remaining-work delay forecast.
 
-Click a stream name or its arrow on the timeline to collapse or expand its activities, including in view-only mode. The header always shows overall progress: the rounded, equal-weight average of all activities in that stream, not just the visible date range. Empty streams show `—`. Collapsed streams retain named summary segments on actual scheduled days, leaving gaps and excluded weekends free. Expansion state is local to each plan during the current page visit and does not change saved plan data.
+**What if?** is read-only: select an active blocker and its assumed end date using the calendar or **−1 day / +1 day** buttons. There is one timeline and one frame per task. Only the selected blocker's end changes, from today to your chosen date; work resumes on the next eligible day. In-progress tasks keep their start and extend using estimated remaining effort: full duration × (100% − done), rounded up to scheduled days. Dependants move afterwards; completed and unrelated tasks stay fixed. Nothing is saved. Set an optional **Deadline** in Plan details to compare the forecast finish with the target.
+
+Choose **Depends on · activity** in activity details to follow another activity in the same stream. **Depends on · stream** in stream details starts that stream after all its predecessor's activities finish. Starts follow automatically on the next eligible day, respecting **Include weekends**; independent activities in a dependent stream retain their calendar spacing. Moving a predecessor cascades to its successors. Auto-scheduled starts and bars cannot move independently: move the predecessor or clear the dependency. Cycles are rejected. Timeline names indent at each activity-dependency level, without moving bars or percentage columns. Dependencies do not infer completion from progress or launch tests.
+
+Click a stream name or its arrow on the timeline to collapse or expand its activities, including in view-only mode. The header always shows overall progress: the rounded, equal-weight average of all activities in that stream, not just the visible date range. Empty streams show `—`. Collapsed streams retain one continuous summary frame with grey non-working weekends and red pauses. Blocking across a weekend stays red, including when ±1 day changes the blocker end but not the next working day. Progress fills scheduled work, not blocked/weekend sections. Expansion state is local to each plan during the current page visit and does not change saved plan data.
 
 Issues show noninteractive **Blocker / Issue** and **ALL / selected streams / selected activities** labels. Click the issue title to open its details and edit the blocker flag or scope. Unchecking an issue in Activity removes that activity from the issue itself: ALL or stream-wide scopes become explicit lists of the other affected activities. Those other activities remain blocked. An empty activity selection affects nothing. Open blockers tint and slowly pulse affected unfinished activities and their stream headers red. The cartoon **BLOCKED!** entry warning appears only when every unfinished activity is blocked; it can be acknowledged or opened directly in the blockers view. Acknowledgement does not resolve an issue.
 
@@ -67,6 +73,20 @@ Reads are view-only by default. Every mutation requires a PocketHive **local-adm
 For remote access, configure `POCKETPLANNER_MCP_ALLOWED_HOSTS` with the actual hostname/IP and port. MCP accepts localhost only by default and rejects untrusted Host/Origin headers. Use HTTPS outside a trusted development network. Connection setup, tools, examples, and agent safety rules are in [MCP.md](docs/MCP.md).
 
 Rovo and PocketHive execution integration are future work: no automatic Jira updates, ticket polling, scenario launches, or status-to-progress guesses are implemented. An eventual connector can supply evidence to these same scoped commands without becoming a second database or bypassing auth.
+
+The agreed [PocketHive integration design](docs/POCKETHIVE_INTEGRATION.md) covers many-to-many run/Activity associations, actual starts with optional journal evidence, requirement-document references and the future agent workflow. It is documentation only, not implemented functionality.
+
+[Product requirements](docs/REQUIREMENTS.md) describes live updates across sessions, read-only blocker-impact previews and an optional plan deadline, available in v0.2.1. PocketHive execution integration remains future work.
+
+## Live updates and What if
+
+Other sessions see committed UI, import and MCP changes automatically, without refreshing the browser. The header shows Live, Update waiting or Live updates unavailable. Open drafts and drags defer incoming refreshes; they never acquire a newer save revision silently. Reconnection catches up automatically. A reverse proxy must pass `/api/events` as an unbuffered long-lived SSE response; no WebSocket upgrade is required.
+
+Set an optional **Deadline** in a plan's details. It stays independent of the calculated Plan finish; leaving it empty means no target, not a guessed date. JSON accepts optional `deadline` as an exact calendar date or null. MCP `create_plan` accepts it and `update_plan` can set or clear it.
+
+In **Plan → What if?**, select a blocker and its **Assumed blocker end**, initially today. The end day is included in the blocking period. Calendar edits and **−1 day / +1 day** immediately update the same timeline; there is no Preview button, second lane or separate pause-start input. Each task keeps one continuous frame: grey marks excluded weekends and red marks blocker/waiting periods. Names stay at the frame's start rather than moving with work segments. Working weekends keep the activity color. The summary reports the forecast finish, its delay against the normal forecast and deadline margin/overrun. Nothing is saved; **Return to plan** clears the assumption. Saved changes from another session recalculate the forecast while retaining a valid assumption; a closed/removed selected blocker or a date now in the past requires a new selection.
+
+Normal Plan uses the same blocker-aware forecast engine. An open blocker is counted through today inclusive, with work resuming no earlier than tomorrow (or the next eligible weekday). Completed/unaffected work stays fixed; dependants follow projected finishes. Known closed-blocker resolution days and recorded ended blocking intervals retain calendar delays rather than resetting dates on closure. Completed tasks with recorded Done use actual start/end dates; missing actual timestamps are never invented. These are day-grained planning projections, not actual elapsed-time evidence. Authored starts/full estimates remain unchanged. Day rollover refreshes when no editor, save or drag is active.
 
 ## Local development
 
@@ -102,12 +122,20 @@ node --check web/app.js
 node --check web/auth.js
 node --check web/progress.js
 node --check web/schedule.js
+node --check web/live.js
+node --check web/whatif.js
 node --check tests/progress-editor.browser.js
+node --check tests/activity-duration.browser.js
+node --check tests/review-fixes.browser.js
+node --check tests/completed-progress.browser.js
 node --check tests/issue-editor.browser.js
 node --check tests/weekends.browser.js
 node --check tests/conflicts-import.browser.js
 node --check tests/editor-pending.browser.js
 node --check tests/dependencies-issues.browser.js
+node --check tests/presentation.browser.js
+node --check tests/dialogs.browser.js
+node --check tests/live-whatif.browser.js
 node --test tests/*.test.cjs
 ```
 
@@ -115,9 +143,13 @@ GitHub Actions runs checks and publishes images on `main` and version tags. Buil
 
 The MCP tests exercise real SDK protocol handling, tool discovery, scoped edits, PocketHive permissions, stale revisions, validation, issue lifecycle, and Host/Origin/body-size protection. Browser regressions run separately against isolated databases, not your working plan.
 
+`tests/live-whatif.browser.js` verifies two independent sessions, UI/MCP notifications, draft/view preservation, stale saves, offline/reconnect, deadline editing, calendar/±1 day controls and percentage-based read-only projections on desktop/mobile. Python and calendar tests cover committed notifications, recovery, capacity, deadline persistence, revision races and calendar propagation. `tests/test_execution.py` covers factual start/completion, reopening, blocker-scope changes, retained history, timestamp protection, chronology and atomic size-limit rollback.
+
+`tests/completed-progress.browser.js` uses intercepted synthetic state in a separate browser context, with no imports or writes. It checks collapsed progress before/after recorded Done, actual spans, pauses, idle gaps, weekend opt-in, calendar clipping and desktop/mobile layout. Calendar tests cover the same union-of-work calculation, overlaps and long actual histories without expanding elapsed days.
+
 `tests/progress-editor.browser.js` is a Playwright browser regression function for an isolated server with an empty temporary database and working PocketHive auth. Navigate the test browser to that server before invoking it with the page. It refuses to run against a workspace with existing plans. It checks progress editing, validation, persistence after reload, view-only controls, named collapsed bars, and mobile layout.
 
-`tests/weekends.browser.js` uses the same isolated-server contract to check weekday gaps, weekend opt-in, legacy omission, summary segments, progress fill, overdue dates, editing, drag snapping, new-activity defaults, persistence and view-only controls. `tests/schedule.test.cjs` covers UTC/DST arithmetic, leap/year boundaries, clipping and the full 365-day duration.
+`tests/weekends.browser.js` uses the same isolated-server contract to check weekday gaps, weekend opt-in, omitted weekend options, summary segments, progress fill, overdue dates, editing, drag snapping, new-activity defaults, persistence and view-only controls. `tests/schedule.test.cjs` covers UTC/DST arithmetic, leap/year boundaries, clipping and the full 365-day duration.
 
 `tests/conflicts-import.browser.js` uses an empty isolated database to check stale editor/drag rejection, safe reopening, closed-form guards, concurrent issue closure, removal of the selected plan, and an actual compact export/import round trip near the UTF-8 byte limit. It also checks malformed/oversized import rejection without changing saved state.
 
@@ -125,4 +157,4 @@ The MCP tests exercise real SDK protocol handling, tool discovery, scoped edits,
 
 `tests/issue-editor.browser.js` uses the same isolated-server precondition and checks Close/Reopen, validation, Save/Cancel, persistence, blocker scope, incomplete labels, Active/History filtering, the full-block warning action, creation, and view-only/mobile behavior.
 
-`tests/dependencies-issues.browser.js` checks real activity/stream dependency editing, date previews, weekend gaps, cascading root dragging, confirmation invalidation, reload persistence, bidirectional issue assignment, precise blocker labels, partial blocking, view-only controls and mobile layout. Python and calendar tests also reject missing/cyclic/cross-stream dependencies and invalid issue targets without changing saved state.
+`tests/dependencies-issues.browser.js` checks real activity/stream dependency editing, date previews, weekend gaps, cascading root dragging, reload persistence, bidirectional issue assignment, precise blocker labels, partial blocking, view-only controls and mobile layout. Python and calendar tests also reject missing/cyclic/cross-stream dependencies and invalid issue targets without changing saved state.

@@ -31,12 +31,21 @@ jobs:
           node --check web/auth.js
           node --check web/progress.js
           node --check web/schedule.js
+          node --check web/live.js
+          node --check web/whatif.js
           node --check tests/progress-editor.browser.js
+          node --check tests/activity-duration.browser.js
+          node --check tests/review-fixes.browser.js
+          node --check tests/completed-progress.browser.js
+          node --check tests/whatif-readability.browser.js
           node --check tests/issue-editor.browser.js
           node --check tests/weekends.browser.js
           node --check tests/conflicts-import.browser.js
           node --check tests/editor-pending.browser.js
           node --check tests/dependencies-issues.browser.js
+          node --check tests/presentation.browser.js
+          node --check tests/dialogs.browser.js
+          node --check tests/live-whatif.browser.js
           node --test tests/*.test.cjs
       - name: Select image tags
         id: image
@@ -44,11 +53,11 @@ jobs:
           IMAGE: ghcr.io/sepa79/pocketplanner
         run: |
           tags=("${IMAGE}:latest" "${IMAGE}:sha-${GITHUB_SHA}")
-          version="${GITHUB_SHA}"
+          version="$(python -c 'from planner_version import APP_VERSION; print(APP_VERSION)')"
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+            [[ "${GITHUB_REF_NAME}" == "v${version}" ]] || exit 1
             tags+=("${IMAGE}:${GITHUB_REF_NAME}")
-            version="${GITHUB_REF_NAME}"
           fi
           printf 'tags<<EOF\n%s\nEOF\n' "$(printf '%s\n' "${tags[@]}")" >> "$GITHUB_OUTPUT"
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"

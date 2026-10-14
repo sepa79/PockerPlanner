@@ -3,14 +3,14 @@
 from copy import deepcopy
 from typing import Literal
 
-from planner_store import InvalidState, RevisionConflict, read, validate, write
+from planner_store import InvalidState, RevisionConflict, read, validate, validate_progress, write
 from planner_issues import assign_activity
 
 Collection = Literal["streams", "activityTypes", "activities", "issues"]
 EDITABLE_FIELDS = {
     "streams": {"name", "description", "dependsOn"},
     "activityTypes": {"name", "color"},
-    "activities": {"name", "streamId", "typeId", "start", "durationDays", "includeWeekends", "progress", "status", "issueIds", "dateConfirmed", "confirmedStart", "dependsOn", "jiraUrl"},
+    "activities": {"name", "streamId", "typeId", "start", "durationDays", "includeWeekends", "progress", "status", "issueIds", "dependsOn", "jiraUrl", "started", "done"},
     "issues": {"title", "description", "scope", "streamIds", "activityIds", "blocker", "discovered", "open", "descriptionIncomplete", "jiraUrl"},
 }
 
@@ -36,8 +36,17 @@ def _fields(changes, allowed):
         raise InvalidState("Supply nonempty changes containing only editable fields")
 
 
-def _save(document, plan_id, workspace_result=False):
-    saved = write(document)
+def _actions(collection, item):
+    if collection != "activities":
+        return {}
+    actions = {key: item.pop(key) for key in ("started", "done") if key in item}
+    if any(type(value) is not bool for value in actions.values()):
+        raise InvalidState("Started and Done actions must be booleans")
+    return actions
+
+
+def _save(document, plan_id, workspace_result=False, execution_actions=None):
+    saved = write(document, execution_actions=execution_actions)
     if workspace_result:
         return saved
     return {"revision": saved["revision"], "plan": _find(saved["plans"], plan_id, "plan")}
@@ -53,16 +62,18 @@ def get_plan(plan_id):
     return {"revision": document["revision"], "plan": _find(document["plans"], plan_id, "plan")}
 
 
-def create_plan(plan_id, name, description, expected_revision):
+def create_plan(plan_id, name, description, expected_revision, deadline=None):
     document = _current(expected_revision)
     if any(plan["id"] == plan_id for plan in document["plans"]):
         raise InvalidState(f"Plan already exists: {plan_id}")
     document["plans"].append({"id": plan_id, "name": name, "description": description, "streams": [], "activityTypes": [], "activities": [], "issues": []})
+    if deadline is not None:
+        document["plans"][-1]["deadline"] = deadline
     return _save(document, plan_id)
 
 
 def update_plan(plan_id, changes, expected_revision):
-    _fields(changes, {"name", "description"})
+    _fields(changes, {"name", "description", "deadline"})
     document = _current(expected_revision)
     _find(document["plans"], plan_id, "plan").update(deepcopy(changes))
     return _save(document, plan_id)
@@ -79,11 +90,13 @@ def create_plan_item(plan_id, collection, item, expected_revision, workspace_res
     items = plan[collection]
     if any(existing["id"] == item["id"] for existing in items):
         raise InvalidState(f"Item already exists: {item['id']}")
-    items.append(deepcopy(item))
+    created = deepcopy(item)
+    actions = _actions(collection, created)
+    items.append(created)
     if collection == "activities":
         validate(document)
         assign_activity(plan, items[-1])
-    return _save(document, plan_id, workspace_result)
+    return _save(document, plan_id, workspace_result, {(plan_id, created["id"]): actions})
 
 
 def update_plan_item(plan_id, collection, item_id, changes, expected_revision, workspace_result=False):
@@ -93,11 +106,15 @@ def update_plan_item(plan_id, collection, item_id, changes, expected_revision, w
     document = _current(expected_revision)
     plan = _find(document["plans"], plan_id, "plan")
     item = _find(plan[collection], item_id, collection)
-    item.update(deepcopy(changes))
+    patch = deepcopy(changes)
+    actions = _actions(collection, patch)
+    item.update(patch)
+    if collection == "activities" and validate_progress(item["progress"]) < 100:
+        item.pop("completedAt", None)
     if collection == "activities" and "issueIds" in changes:
         validate(document)
         assign_activity(plan, item)
-    return _save(document, plan_id, workspace_result)
+    return _save(document, plan_id, workspace_result, {(plan_id, item_id): actions})
 
 
 def save_activity(document):

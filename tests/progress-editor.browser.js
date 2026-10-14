@@ -14,7 +14,6 @@ async (page) => {
     const fixture = await (await fetch("/example-plan.json")).json();
     fixture.plans[0].activities[0].start = "2026-10-13";
     fixture.plans[0].activities[0].progress = 25;
-    fixture.plans[0].activities[0].dateConfirmed = true;
     const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PocketAuth.headers()}, body: JSON.stringify(fixture)});
     if (!response.ok) throw new Error(await response.text());
   });
@@ -41,6 +40,10 @@ async (page) => {
   const progressFields = await page.locator("#editor-form").evaluate(element => new FormData(element).getAll("progress"));
   ensure(progressFields.length === 1 && progressFields[0] === "57", "Progress has more than one submitted owner");
   const beforeDraft = await state();
+  const started = page.getByRole("button", {name: "Started", exact: true});
+  await started.click();
+  ensure(await started.getAttribute("aria-pressed") === "true", "Started did not stage the actual start");
+  ensure((await state()).revision === beforeDraft.revision, "Started saved without Save");
   for (const invalid of ["101", "-1", "12.5", ""]) {
     await number.fill(invalid);
     ensure(!await number.evaluate(element => element.checkValidity()), "Invalid progress draft was accepted");
@@ -54,6 +57,8 @@ async (page) => {
   await page.locator("#cancel-editor").click();
   await page.locator(".activity-name").first().click();
   ensure(await number.inputValue() === "25", "Cancel did not discard the draft");
+  ensure(await started.getAttribute("aria-pressed") === "false", "Cancel retained Started");
+  await started.click();
   await done.click();
   const savedResponse = page.waitForResponse(response => response.request().method() === "PUT" && /\/api\/(?:state|activities)$/.test(response.url()));
   await save.click();
@@ -61,16 +66,20 @@ async (page) => {
   await page.locator("#editor").waitFor({state: "hidden"});
   const saved = await state();
   ensure(saved.plans[0].activities[0].progress === 100, "Saved progress is not complete");
+  ensure(saved.plans[0].activities[0].startedAt && saved.plans[0].activities[0].completedAt, "Started/Done timestamps were not recorded");
   ensure(saved.plans[0].activities[0].durationDays === 2 && saved.plans[0].activities[0].start === "2026-10-13", "Progress editing changed the schedule");
   ensure(saved.plans[0].activities[0].status === beforeDraft.plans[0].activities[0].status, "Done overwrote the description");
   const track = await page.locator(".activity-row .track").first().evaluate(element => ({width: element.getBoundingClientRect().width, expected: Number.parseFloat(element.style.width)}));
   ensure(track.width > 0 && Math.abs(track.width - track.expected) < 1, "Gantt inline positioning styles are blocked or mis-sized");
   await page.getByRole("button", {name: "Collapse Example stream", exact: true}).click();
-  ensure(await page.locator(".stream-summary-label").textContent() === "Example stream", "Collapsed bar has no stream name");
+  ensure(await page.locator(".stream-summary").count() === 1 && (await page.locator(".stream-name").textContent()).includes("Example stream"), "Collapsed stream must retain its name and one actual frame");
   ensure(await page.locator(".stream-progress").textContent() === "100%", "Stream progress did not refresh after Save");
   await page.reload();
   await page.locator(".activity-name").first().click();
   ensure(await number.inputValue() === "100" && await slider.inputValue() === "100", "Saved progress did not survive reload");
+  ensure(await started.isDisabled(), "A recorded actual start can be overwritten");
+  ensure((await page.locator("#activity-timing").innerText()).includes("calendar days"), "Actual time is missing");
+  ensure((await page.locator("#activity-blocker-delay").innerText()).includes("Not projected"), "Completed work must not claim zero historical blocker delay from a fixed forecast");
   await number.fill("37");
   await page.setViewportSize({width: 390, height: 844});
   const mobile = await page.locator("#editor").evaluate(element => ({width: element.clientWidth, contentWidth: element.scrollWidth, pageOverflow: document.documentElement.scrollWidth > innerWidth}));
@@ -83,6 +92,7 @@ async (page) => {
   await page.reload();
   await page.locator(".activity-name").first().click();
   ensure(await number.inputValue() === "37" && await slider.inputValue() === "37", "Typed progress did not survive reload");
+  ensure(!(await state()).plans[0].activities[0].completedAt, "Reopening progress retained completion time");
   await page.locator("#close-editor").click();
   await page.locator("#auth-button").click();
   await page.locator(".activity-name").first().click();

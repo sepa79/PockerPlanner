@@ -10,6 +10,7 @@ from starlette.testclient import TestClient
 import planner_store
 import pockethive_auth
 from server import create_app, WEB
+from planner_version import APP_NAME, APP_VERSION
 
 
 class AccessTests(unittest.TestCase):
@@ -53,12 +54,20 @@ class AccessTests(unittest.TestCase):
             self.assertEqual(planner_store.read()["plans"], [])
 
     def test_public_brand_assets_are_served_as_svg(self):
-        for filename in ("pocketplanner-logo.svg", "pocketplanner-mark.svg"):
+        for filename in ("pocketplanner-logo.svg", "pocketplanner-topbar.svg", "pocketplanner-mark.svg"):
             with self.subTest(filename=filename):
                 response = self.client.get("/" + filename)
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.headers["content-type"], "image/svg+xml")
                 self.assertEqual(response.content, (WEB / filename).read_bytes())
+
+    def test_public_application_info_uses_the_canonical_version_without_writes(self):
+        before = planner_store.read()
+        response = self.client.get("/api/info")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"name": APP_NAME, "version": APP_VERSION})
+        self.assertEqual(APP_VERSION, (planner_store.ROOT / "VERSION").read_text().strip())
+        self.assertEqual(planner_store.read(), before)
 
     def test_security_headers_allow_gantt_styles_but_not_inline_scripts(self):
         response = self.client.get("/")
@@ -83,6 +92,39 @@ class AccessTests(unittest.TestCase):
         with patch("pockethive_auth._request", return_value={"username": "local-admin", "active": False}):
             self.assertEqual(self.request("PUT", "/api/state", self.example, "admin-token")[0], 401)
         self.assertEqual(planner_store.read()["plans"], [])
+
+    def test_invalid_activity_progress_returns_400_without_saving(self):
+        with patch("pockethive_auth._request", side_effect=self.identity):
+            status, saved = self.request("PUT", "/api/state", self.example, "admin-token")
+            self.assertEqual(status, 200)
+            for progress in ("50", None, {}, [], True, 50.5, -1, 101):
+                with self.subTest(progress=progress):
+                    item = {**self.example["plans"][0]["activities"][0], "progress": progress}
+                    body = {"planId": "example-plan", "activityId": "example", "item": item, "expectedRevision": saved["revision"]}
+                    status, error = self.request("PUT", "/api/activities", body, "admin-token")
+                    self.assertEqual(status, 400)
+                    self.assertEqual(error["error"], "Progress must be 0–100")
+                    self.assertEqual(planner_store.read(), saved)
+
+    def test_activity_execution_actions_share_auth_revision_and_store_checks(self):
+        with patch("pockethive_auth._request", side_effect=self.identity):
+            self.assertEqual(self.request("PUT", "/api/state", self.example, "admin-token")[0], 200)
+            item = {**self.example["plans"][0]["activities"][0], "started": True}
+            body = {"planId": "example-plan", "activityId": "example", "item": item, "expectedRevision": 1}
+            self.assertEqual(self.request("PUT", "/api/activities", body)[0], 401)
+            self.assertEqual(self.request("PUT", "/api/activities", body, "viewer-token")[0], 403)
+            status, saved = self.request("PUT", "/api/activities", body, "admin-token")
+            self.assertEqual(status, 200)
+            start = saved["plans"][0]["activities"][0]["startedAt"]
+            self.assertTrue(start.endswith("Z"))
+            self.assertEqual(self.request("PUT", "/api/activities", body, "admin-token")[0], 409)
+            body["expectedRevision"] = saved["revision"]
+            body["item"].update({"progress": 100, "done": True})
+            status, saved = self.request("PUT", "/api/activities", body, "admin-token")
+            self.assertEqual(status, 200)
+            self.assertEqual(saved["plans"][0]["activities"][0]["startedAt"], start)
+            self.assertTrue(saved["plans"][0]["activities"][0]["completedAt"].endswith("Z"))
+        self.assertEqual(planner_store.read(), saved)
 
     def test_unconfigured_auth_keeps_the_application_view_only(self):
         with patch("pockethive_auth.AUTH_BASE", ""):

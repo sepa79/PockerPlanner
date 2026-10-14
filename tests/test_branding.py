@@ -23,6 +23,18 @@ class BrandingTests(unittest.TestCase):
         self.assertEqual(self.subtitle.get("textLength"), self.wordmark.get("textLength"))
         self.assertEqual(float(self.subtitle.get("y")) - float(self.wordmark.get("y")), 34)
 
+    def test_topbar_variant_has_the_same_wordmark_without_a_subtitle(self):
+        logo = parse(WEB / "pocketplanner-topbar.svg").getroot()
+        texts = logo.findall("{http://www.w3.org/2000/svg}text")
+        self.assertEqual(len(texts), 1)
+        self.assertEqual("".join(texts[0].itertext()), "PocketPlanner")
+        for attribute in ("font-family", "font-size", "font-weight", "textLength", "lengthAdjust"):
+            self.assertEqual(texts[0].get(attribute), self.wordmark.get(attribute))
+        html = (WEB / "index.html").read_text()
+        self.assertIn('src="/pocketplanner-topbar.svg"', html)
+        self.assertIn('id="app-version"', html)
+        self.assertIn("web/pocketplanner-logo.svg", (WEB.parent / "README.md").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

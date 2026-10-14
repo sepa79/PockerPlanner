@@ -70,8 +70,9 @@ async (page) => {
         document.getElementById("editor-form").requestSubmit();
         openEditor("activity", "second");
       });
+      await page.mouse.click(6, 6);
       await page.keyboard.press("Escape");
-      ensure(await editor.evaluate(element => element.open), "Cancel/Close/Escape dismissed the pending editor");
+      ensure(await editor.evaluate(element => element.open), "Cancel/Close/backdrop/Escape dismissed the pending editor");
       ensure(await page.evaluate(original => editorKind === original.kind && editorId === original.id, original), "Another editor replaced a pending draft");
       ensure(writes.length === before && !prompted, "Pending controls submitted another write or deletion prompt");
     } finally { page.off("dialog", dismiss); }
@@ -194,6 +195,6 @@ async (page) => {
     ensure(await page.locator("#cancel-editor").isEnabled() && await page.locator("#close-editor").isEnabled(), "Viewers cannot close details");
     await page.locator("#close-editor").click();
     ensure(errors.length === 0, `Browser errors: ${errors.join(", ")}`);
-    return {checks: "delayed Save, pending controls, Cancel/Close/Escape, duplicate submits, editor replacement, 1,000-character save/reload, server bypass rejection, HTTP/JSON/network failure recovery, retries, conflict recovery, other description limits, Close/Reopen, deletion, view-only, mobile", revision: (await state()).revision, mobile};
+    return {checks: "delayed Save, pending controls, Cancel/Close/backdrop/Escape, duplicate submits, editor replacement, 1,000-character save/reload, server bypass rejection, HTTP/JSON/network failure recovery, retries, conflict recovery, other description limits, Close/Reopen, deletion, view-only, mobile", revision: (await state()).revision, mobile};
   } finally { releases.forEach(release => release()); }
 }

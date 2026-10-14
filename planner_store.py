@@ -9,6 +9,8 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+from planner_execution import record as record_execution
+
 ROOT = Path(__file__).resolve().parent
 DATABASE = Path(os.environ.get("TESTPLANNER_DB", ROOT / "data" / "planner.sqlite3"))
 SCHEMA_VERSION = 1
@@ -57,6 +59,49 @@ def _serialize(document):
     return serialized
 
 
+def _timestamp(value, field):
+    try:
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])", value):
+            raise ValueError
+        return datetime.fromisoformat(value)
+    except ValueError:
+        raise InvalidState(f"{field} must be an ISO timestamp with a timezone") from None
+
+
+def validate_progress(value):
+    if type(value) is not int or not 0 <= value <= 100:
+        raise InvalidState("Progress must be 0–100")
+    return value
+
+
+def _execution(activity):
+    started = _timestamp(activity["startedAt"], "Activity startedAt") if activity.get("startedAt") is not None else None
+    completed = _timestamp(activity["completedAt"], "Activity completedAt") if activity.get("completedAt") is not None else None
+    tracking = _timestamp(activity["blockerTrackingSince"], "Activity blockerTrackingSince") if activity.get("blockerTrackingSince") is not None else None
+    if completed and (activity["progress"] != 100 or (started and completed < started)):
+        raise InvalidState("Completion requires 100% progress and cannot precede Started")
+    if tracking and (not started or tracking < started or (completed and tracking > completed)):
+        raise InvalidState("Invalid blocker tracking period")
+    intervals = activity.get("blockerIntervals", [])
+    if not isinstance(intervals, list) or len(intervals) > 1000:
+        raise InvalidState("Invalid blocker intervals (maximum 1000)")
+    last_ends = {}
+    for interval in intervals:
+        if not isinstance(interval, dict) or set(interval) != {"issueId", "title", "startedAt", "endedAt"}:
+            raise InvalidState("Invalid blocker interval fields")
+        issue_id = _text(interval["issueId"], "Blocker interval issue ID", 80, True)
+        if interval["issueId"] != issue_id:
+            raise InvalidState("Invalid blocker interval issue ID")
+        _text(interval["title"], "Blocker interval title", 160, True)
+        start = _timestamp(interval["startedAt"], "Blocker interval start")
+        end = _timestamp(interval["endedAt"], "Blocker interval end") if interval["endedAt"] is not None else None
+        if not tracking or start < tracking or (end and end < start) or (completed and (not end or end > completed)):
+            raise InvalidState("Invalid blocker interval chronology")
+        if issue_id in last_ends and (last_ends[issue_id] is None or start < last_ends[issue_id]):
+            raise InvalidState("Overlapping intervals for the same blocker")
+        last_ends[issue_id] = end
+
+
 def _items(document, key, maximum=500):
     items = document.get(key)
     if not isinstance(items, list) or len(items) > maximum:
@@ -96,10 +141,13 @@ def _dependencies(items, label, same_stream=False):
 
 
 def _validate_plan(plan):
-    if set(plan) != {"id", "name", "description", "streams", "activityTypes", "activities", "issues"}:
+    required = {"id", "name", "description", "streams", "activityTypes", "activities", "issues"}
+    if not required <= set(plan) or not set(plan) <= required | {"deadline"}:
         raise InvalidState("Invalid plan fields")
     _text(plan.get("name"), "plan name", 160, True)
     _text(plan.get("description"), "plan description", 12000)
+    if plan.get("deadline") is not None:
+        _calendar_date(plan["deadline"], "Plan deadline")
     streams, stream_ids = _items(plan, "streams")
     types, type_ids = _items(plan, "activityTypes")
     activities, activity_ids = _items(plan, "activities")
@@ -142,6 +190,8 @@ def _validate_plan(plan):
                 raise InvalidState("Issue resolvedAt must be an ISO timestamp with a timezone") from None
         _calendar_date(issue.get("discovered"), "Issue discovery date")
     for activity in activities:
+        if "started" in activity or "done" in activity:
+            raise InvalidState("Started/Done are activity command actions, not workspace fields")
         _text(activity.get("name"), "activity name", 160, True)
         _text(activity.get("status"), "activity status", 1000)
         _url(activity.get("jiraUrl"), "activity Jira URL")
@@ -152,12 +202,8 @@ def _validate_plan(plan):
             raise InvalidState("Duration must be 1–365 full planned days")
         if type(activity.get("includeWeekends", False)) is not bool:
             raise InvalidState("includeWeekends must be a boolean")
-        if type(activity.get("progress")) is not int or not 0 <= activity["progress"] <= 100:
-            raise InvalidState("Progress must be 0–100")
-        if type(activity.get("dateConfirmed")) is not bool:
-            raise InvalidState("Invalid date confirmation flag")
-        if activity.get("confirmedStart") is not None:
-            _calendar_date(activity["confirmedStart"], "Confirmed activity start date")
+        validate_progress(activity.get("progress"))
+        _execution(activity)
         blockers = activity.get("issueIds")
         if not isinstance(blockers, list) or any(not isinstance(issue_id, str) for issue_id in blockers) or len(blockers) != len(set(blockers)) or any(issue_id not in issue_ids for issue_id in blockers):
             raise InvalidState("Activity refers to an invalid issue in its plan")
@@ -203,6 +249,14 @@ def read():
     return document
 
 
+def read_revision():
+    with _connect() as connection:
+        row = connection.execute("SELECT json_extract(document, '$.revision') FROM planner WHERE id = 1").fetchone()
+    if row is None or type(row[0]) is not int or row[0] < 0:
+        raise InvalidState("Planner revision is unavailable")
+    return row[0]
+
+
 def _resolution_timestamp():
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -225,7 +279,7 @@ def _record_resolutions(document, current):
     return saved
 
 
-def write(document):
+def write(document, execution_actions=None):
     validate(document)
     with _connect() as connection:
         connection.execute("BEGIN IMMEDIATE")
@@ -236,7 +290,20 @@ def write(document):
         validate(current)
         if document["revision"] != current["revision"]:
             raise RevisionConflict("Workspace changed in another session. Reload and try again.")
-        saved = {**_record_resolutions(document, current), "revision": current["revision"] + 1}
+        timestamp = None
+
+        def execution_timestamp():
+            nonlocal timestamp
+            if timestamp is None:
+                timestamp = _resolution_timestamp()
+            return timestamp
+
+        try:
+            saved = record_execution(_record_resolutions(document, current), current, execution_actions or {}, execution_timestamp)
+        except ValueError as error:
+            raise InvalidState(str(error)) from None
+        saved["revision"] = current["revision"] + 1
+        validate(saved)
         connection.execute("UPDATE planner SET document = ? WHERE id = 1", (_serialize(saved),))
     return saved
 

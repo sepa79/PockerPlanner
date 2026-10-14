@@ -128,12 +128,12 @@ async (page) => {
   });
   const download = page.waitForEvent("download");
   await page.locator("#export-json").click();
-  ensure((await download).suggestedFilename() === "pocketplanner-plan.json", "The export did not download the expected JSON file");
+  ensure((await download).suggestedFilename() === "Synthetic żółć 🍯.json", "The export did not use the selected plan's Unicode name");
   const exported = await page.evaluate(async () => {
     const text = await window.qaExportBlob.text();
     const document = JSON.parse(text);
     const transfer = new DataTransfer();
-    transfer.items.add(new File([window.qaExportBlob], "pocketplanner-plan.json", {type: "application/json"}));
+    transfer.items.add(new File([window.qaExportBlob], "Synthetic żółć 🍯.json", {type: "application/json"}));
     window.document.getElementById("import-file").files = transfer.files;
     return {bytes: window.qaExportBlob.size, compact: text === JSON.stringify(document), revision: document.revision, samePlans: JSON.stringify(document.plans) === JSON.stringify(workspace.plans)};
   });

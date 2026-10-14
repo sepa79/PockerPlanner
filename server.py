@@ -11,16 +11,19 @@ from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 
 from planner_mcp import create_mcp_server, transport_security
 from planner_commands import save_activity
+from planner_version import APP_NAME, APP_VERSION
+from planner_live import RevisionFeed
 from planner_store import MAX_DOCUMENT_BYTES, InvalidState, RevisionConflict, read, write
 from pockethive_auth import AuthError, access, login, require_editor
 
 WEB = Path(__file__).resolve().parent / "web"
-STATIC = {"/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"), "/auth.js": ("auth.js", "text/javascript"), "/progress.js": ("progress.js", "text/javascript"), "/schedule.js": ("schedule.js", "text/javascript"), "/style.css": ("style.css", "text/css"), "/brand.css": ("brand.css", "text/css"), "/pocketplanner-logo.svg": ("pocketplanner-logo.svg", "image/svg+xml"), "/pocketplanner-mark.svg": ("pocketplanner-mark.svg", "image/svg+xml"), "/example-plan.json": ("example-plan.json", "application/json")}
+STATIC = {"/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"), "/auth.js": ("auth.js", "text/javascript"), "/progress.js": ("progress.js", "text/javascript"), "/schedule.js": ("schedule.js", "text/javascript"), "/style.css": ("style.css", "text/css"), "/brand.css": ("brand.css", "text/css"), "/pocketplanner-logo.svg": ("pocketplanner-logo.svg", "image/svg+xml"), "/pocketplanner-topbar.svg": ("pocketplanner-topbar.svg", "image/svg+xml"), "/pocketplanner-mark.svg": ("pocketplanner-mark.svg", "image/svg+xml"), "/example-plan.json": ("example-plan.json", "application/json")}
+STATIC.update({"/live.js": ("live.js", "text/javascript"), "/whatif.js": ("whatif.js", "text/javascript")})
 MAX_BODY_BYTES = MAX_DOCUMENT_BYTES
 
 
@@ -59,6 +62,12 @@ async def session_endpoint(request):
     return JSONResponse(await run_in_threadpool(access, request.headers.get("authorization")))
 
 
+async def events_endpoint(request):
+    feed = request.app.state.revisions
+    queue = feed.subscribe()
+    return StreamingResponse(feed.events(queue), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
+
+
 async def activity_endpoint(request):
     await run_in_threadpool(require_editor, request.headers.get("authorization"))
     document = await _document(request)
@@ -73,6 +82,10 @@ async def login_endpoint(request):
 def health_endpoint(request):
     read()
     return JSONResponse({"status": "ok"})
+
+
+def info_endpoint(request):
+    return JSONResponse({"name": APP_NAME, "version": APP_VERSION})
 
 
 def static_endpoint(request):
@@ -99,12 +112,20 @@ def create_app():
 
     @asynccontextmanager
     async def lifespan(application):
-        async with mcp_server.session_manager.run():
-            yield
+        feed = RevisionFeed()
+        application.state.revisions = feed
+        await feed.start()
+        try:
+            async with mcp_server.session_manager.run():
+                yield
+        finally:
+            await feed.stop()
 
     application = Starlette(
         routes=[
+            Route("/api/info", info_endpoint),
             Route("/api/state", state_endpoint, methods=["GET", "PUT"]),
+            Route("/api/events", events_endpoint, methods=["GET"]),
             Route("/api/activities", activity_endpoint, methods=["PUT"]),
             Route("/api/session", session_endpoint, methods=["GET"]),
             Route("/api/session/login", login_endpoint, methods=["POST"]),
@@ -122,4 +143,4 @@ def create_app():
 app = create_app()
 
 if __name__ == "__main__":
-    uvicorn.run(app, host=os.environ.get("HOST", "0.0.0.0"), port=int(os.environ.get("PORT", "8765")), proxy_headers=False)
+    uvicorn.run(app, host=os.environ.get("HOST", "0.0.0.0"), port=int(os.environ.get("PORT", "8765")), proxy_headers=False, timeout_graceful_shutdown=5)

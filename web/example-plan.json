@@ -32,7 +32,6 @@
           "progress": 0,
           "status": "Replace this sample with your own activity.",
           "issueIds": ["example-issue"],
-          "dateConfirmed": false,
           "jiraUrl": ""
         }
       ],

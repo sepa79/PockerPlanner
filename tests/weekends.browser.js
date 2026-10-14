@@ -11,7 +11,7 @@ async (page) => {
     const plan = fixture.plans[0];
     plan.streams.push({id: "continuous", name: "Continuous stream", description: "Synthetic weekend-enabled test"});
     const activity = plan.activities[0];
-    Object.assign(activity, {start: "2026-10-16", durationDays: 3, progress: 50, dateConfirmed: true});
+    Object.assign(activity, {start: "2026-10-16", durationDays: 3, progress: 50});
     delete activity.includeWeekends;
     plan.activities.push({...activity, id: "calendar", name: "Calendar activity", streamId: "continuous", includeWeekends: true});
     plan.activities.push({...activity, id: "weekend-start", name: "Weekend start", start: "2026-10-17", durationDays: 1});
@@ -23,17 +23,19 @@ async (page) => {
   const bars = id => page.locator(`.bar[data-id="${id}"]`);
   const ranges = locator => locator.evaluateAll(elements => elements.map(element => ({start: element.dataset.start, end: element.dataset.end, progress: parseFloat(element.querySelector(".bar-fill, .stream-summary-fill").style.width)})));
   const weekday = await ranges(bars("example"));
-  ensure(weekday.length === 2 && weekday[0].start === "2026-10-16" && weekday[0].end === "2026-10-16" && weekday[1].start === "2026-10-19" && weekday[1].end === "2026-10-20", "Weekdays do not leave Saturday/Sunday free");
-  ensure(weekday[0].progress === 100 && weekday[1].progress === 25, "Progress fills the weekend gap or loses planned work");
-  const gap = await bars("example").evaluateAll(elements => {
-    const first = elements[0].getBoundingClientRect();
-    const second = elements[1].getBoundingClientRect();
-    const dayWidth = elements[0].parentElement.clientWidth / Number(document.getElementById("range-days").value);
-    return {actual: second.left - first.right, expected: dayWidth * 2 + 4};
+  ensure(weekday.length === 1 && weekday[0].start === "2026-10-16" && weekday[0].end === "2026-10-19", "One frame should span the weekend and two remaining scheduled days");
+  const gap = await bars("example").evaluate(element => {
+    const weekend = element.querySelector(".bar-gap.weekend").getBoundingClientRect();
+    const dayWidth = element.parentElement.clientWidth / Number(document.getElementById("range-days").value);
+    const fills = [...element.querySelectorAll(".bar-fill")].map(fill => parseFloat(fill.style.width));
+    return {actual: weekend.width, expected: dayWidth * 2, fills, dayWidth};
   });
-  ensure(Math.abs(gap.actual - gap.expected) < 2, "The real rendered bars cover a weekend cell");
+  ensure(Math.abs(gap.actual - gap.expected) < 2, "Weekend coloring must cover exactly Saturday/Sunday");
+  ensure(await bars("example").locator(".bar-gap.weekend").evaluate(element => getComputedStyle(element).backgroundColor === "rgb(48, 57, 79)" && getComputedStyle(element).backgroundImage === "none"), "Non-working weekends must have solid coloring");
+  ensure(Math.abs(gap.fills[0] - gap.dayWidth) < 1 && gap.fills[1] === 0, "Progress fills weekend cells or loses scheduled work");
   const calendar = await ranges(bars("calendar"));
-  ensure(calendar.length === 1 && calendar[0].start === "2026-10-16" && calendar[0].end === "2026-10-18", "Weekend opt-in does not count calendar days");
+  ensure(calendar.length === 1 && calendar[0].start === "2026-10-16" && calendar[0].end === "2026-10-17", "Weekend opt-in does not count remaining calendar days");
+  ensure(await bars("calendar").locator(".bar-gap.weekend").count() === 0, "Working weekends must keep the normal Activity color");
   ensure((await ranges(bars("weekend-start")))[0].start === "2026-10-19", "A missing weekend flag starts work on Saturday");
   const overdue = await page.evaluate(() => {
     const originalToday = today;
@@ -45,10 +47,10 @@ async (page) => {
   const beforeCollapse = await state();
   await page.getByRole("button", {name: "Collapse Example stream", exact: true}).click();
   const summaries = await ranges(page.locator(".gantt-row.group").first().locator(".stream-summary"));
-  ensure(summaries.length === 2 && summaries[0].end === "2026-10-16" && summaries[1].start === "2026-10-19", "Collapsed summary fills excluded weekends");
+  ensure(summaries.length === 1 && summaries[0].start === "2026-10-16" && summaries[0].end === "2026-10-19" && await page.locator(".gantt-row.group").first().locator(".bar-gap.weekend").count() === 1, "Collapsed summary must keep its forecast frame and colored weekend");
   await page.getByRole("button", {name: "Collapse Continuous stream", exact: true}).click();
   const continuousSummary = await ranges(page.locator(".gantt-row.group").nth(1).locator(".stream-summary"));
-  ensure(continuousSummary.length === 1 && continuousSummary[0].end === "2026-10-18", "Collapsed summary drops explicitly scheduled weekend work");
+  ensure(continuousSummary.length === 1 && continuousSummary[0].end === "2026-10-17", "Collapsed summary drops explicitly scheduled weekend work");
   ensure((await state()).revision === beforeCollapse.revision, "Rendering or collapsing changed saved state");
   await page.getByRole("button", {name: "Expand Example stream", exact: true}).click();
   await page.getByRole("button", {name: "Expand Continuous stream", exact: true}).click();
@@ -63,9 +65,9 @@ async (page) => {
   };
   await page.locator('.activity-name[data-id="example"]').click();
   ensure(!await checkbox.isChecked(), "An omitted flag is not weekdays by default");
-  ensure((await page.locator("#schedule-hint").textContent()).includes("20 Oct"), "Editor finish does not account for weekends");
+  ensure((await page.locator("#schedule-hint").textContent()).includes("19 Oct"), "Editor forecast does not account for weekends");
   await checkbox.check();
-  ensure((await page.locator("#schedule-hint").textContent()).includes("18 Oct"), "Weekend opt-in does not update the finish preview");
+  ensure((await page.locator("#schedule-hint").textContent()).includes("17 Oct"), "Weekend opt-in does not update the finish preview");
   await page.locator("#cancel-editor").click();
   ensure((await state()).revision === beforeCollapse.revision, "Cancel saved the weekend checkbox");
   await page.locator('.activity-name[data-id="example"]').click();
@@ -88,11 +90,11 @@ async (page) => {
     ensure((await response).ok(), "Dragging did not save");
     await page.waitForFunction(() => !ignoreClick);
   };
-  await dragOneDay(bars("example").nth(1));
+  await dragOneDay(bars("example"));
   let saved = await state();
   const shifted = saved.plans[0].activities.find(activity => activity.id === "example");
-  ensure(shifted.start === "2026-10-19" && shifted.durationDays === 3 && shifted.includeWeekends === false && shifted.progress === 50 && shifted.dateConfirmed === false, "Dragging a continuation did not snap the whole activity to Monday while preserving its work");
-  ensure((await ranges(bars("example")))[0].end === "2026-10-21", "Drag result does not recompute the business-day finish");
+  ensure(shifted.start === "2026-10-19" && shifted.durationDays === 3 && shifted.includeWeekends === false && shifted.progress === 50, "Dragging a continuation did not snap the whole activity to Monday while preserving its work");
+  ensure((await ranges(bars("example")))[0].end === "2026-10-20", "Drag result does not recompute the remaining-work forecast");
   await dragOneDay(bars("calendar"));
   saved = await state();
   const movedCalendar = saved.plans[0].activities.find(activity => activity.id === "calendar");

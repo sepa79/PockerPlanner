@@ -12,6 +12,7 @@ import planner_store
 import planner_commands
 from pockethive_auth import AuthError
 from server import create_app
+from planner_version import APP_VERSION
 
 
 class McpTests(unittest.TestCase):
@@ -56,6 +57,7 @@ class McpTests(unittest.TestCase):
         response = self.rpc("initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "regression", "version": "1.0"}})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["result"]["serverInfo"]["name"], "PocketPlanner")
+        self.assertEqual(response.json()["result"]["serverInfo"]["version"], APP_VERSION)
         self.assertNotIn("mcp-session-id", response.headers)
         tools = self.rpc("tools/list").json()["result"]["tools"]
         self.assertEqual({tool["name"] for tool in tools}, {"get_access", "list_plans", "get_plan", "create_plan", "update_plan", "create_plan_item", "update_plan_item"})
@@ -66,6 +68,30 @@ class McpTests(unittest.TestCase):
         self.assert_failure(self.call("get_plan", {"plan_id": "missing"}), "INVALID_INPUT")
         with patch("pockethive_auth.AUTH_BASE", ""):
             self.assertEqual(self.call("get_access")["structuredContent"], {"user": None, "canEdit": False, "configured": False})
+
+    def test_invalid_progress_is_a_controlled_error_without_partial_edits(self):
+        saved = planner_store.write(self.example)
+        with patch("pockethive_auth._request", side_effect=self.identity):
+            for progress in ("50", None, {}, [], True, 50.5, -1, 101):
+                with self.subTest(progress=progress):
+                    arguments = {"plan_id": "example-plan", "collection": "activities", "item_id": "example", "changes": {"progress": progress, "status": "Must not be saved"}, "expected_revision": saved["revision"]}
+                    self.assert_failure(self.call("update_plan_item", arguments, "admin-token"), "INVALID_INPUT")
+                    self.assertEqual(planner_store.read(), saved)
+
+    def test_deadline_create_update_clear_and_validation_use_existing_permissions(self):
+        with patch("pockethive_auth._request", side_effect=self.identity):
+            arguments = {"plan_id": "deadline", "name": "Deadline", "description": "", "expected_revision": 0, "deadline": "2026-10-30"}
+            self.assert_failure(self.call("create_plan", arguments), "AUTH_401")
+            created = self.call("create_plan", arguments, "admin-token")["structuredContent"]
+            self.assertEqual(created["plan"]["deadline"], "2026-10-30")
+            update = {"plan_id": "deadline", "changes": {"deadline": "2026-10-31"}, "expected_revision": 1}
+            self.assert_failure(self.call("update_plan", update, "viewer-token"), "AUTH_403")
+            updated = self.call("update_plan", update, "admin-token")["structuredContent"]
+            self.assertEqual(updated["plan"]["deadline"], "2026-10-31")
+            update.update(changes={"deadline": "invalid"}, expected_revision=2)
+            self.assert_failure(self.call("update_plan", update, "admin-token"), "INVALID_INPUT")
+            update.update(changes={"deadline": None})
+            self.assertIsNone(self.call("update_plan", update, "admin-token")["structuredContent"]["plan"]["deadline"])
 
     def test_each_mutation_requires_a_fresh_verified_editor(self):
         arguments = {"plan_id": "new", "name": "New", "description": "", "expected_revision": 0}
@@ -133,11 +159,11 @@ class McpTests(unittest.TestCase):
         planner_store.write(self.example)
         store_write = planner_store.write
 
-        def competing_write(document):
+        def competing_write(document, execution_actions=None):
             browser = planner_store.read()
             browser["plans"][0]["activities"][0]["progress"] = 80
             store_write(browser)
-            return store_write(document)
+            return store_write(document, execution_actions=execution_actions)
 
         with patch("planner_commands.write", side_effect=competing_write):
             with self.assertRaises(planner_store.RevisionConflict):
@@ -173,7 +199,7 @@ class McpTests(unittest.TestCase):
             self.assertEqual(update("activities", "heavy", {"dependsOn": "example"})["structuredContent"]["plan"]["activities"][1]["dependsOn"], "example")
             self.assertEqual(update("streams", "next", {"dependsOn": "demo"})["structuredContent"]["plan"]["streams"][1]["dependsOn"], "demo")
             before = planner_store.read()
-            for collection, item_id, changes in [("activities", "example", {"dependsOn": "heavy"}), ("activities", "heavy", {"dependsOn": "next-task"}), ("streams", "demo", {"dependsOn": "next"}), ("activities", "heavy", {"confirmedStart": "2026-W42-1"})]:
+            for collection, item_id, changes in [("activities", "example", {"dependsOn": "heavy"}), ("activities", "heavy", {"dependsOn": "next-task"}), ("streams", "demo", {"dependsOn": "next"}), ("activities", "heavy", {"started": "yes"})]:
                 self.assert_failure(update(collection, item_id, changes), "INVALID_INPUT")
                 self.assertEqual(planner_store.read(), before)
             updated = update("activities", "example", {"issueIds": []})["structuredContent"]

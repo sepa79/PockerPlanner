@@ -10,7 +10,7 @@ async (page) => {
     const fixture = await (await fetch("/example-plan.json")).json();
     const plan = fixture.plans[0];
     plan.streams.push({id: "next", name: "Next stream", description: "Synthetic next stream"});
-    const root = {...plan.activities[0], id: "root", name: "Minimal", start: "2026-10-16", durationDays: 1, progress: 0, issueIds: [], dateConfirmed: true};
+    const root = {...plan.activities[0], id: "root", name: "Minimal", start: "2026-10-16", durationDays: 1, progress: 0, issueIds: []};
     plan.activities = [root,
       {...root, id: "heavy", name: "Heavy", start: "2026-10-30", durationDays: 3},
       {...root, id: "next-root", name: "Next root", streamId: "next", start: "2026-10-09"},
@@ -24,7 +24,7 @@ async (page) => {
   await page.reload();
   await page.getByRole("button", {name: "Acknowledged", exact: true}).click();
   const editor = page.locator("#editor");
-  const start = page.getByLabel("Start date", {exact: true});
+  const start = page.getByLabel("Planned start date", {exact: true});
   const dependency = page.getByRole("combobox", {name: "Depends on · activity", exact: true});
   const openActivity = async id => { await page.locator(`.activity-name[data-id="${id}"]`).click(); };
   const saveEditor = async () => {
@@ -43,7 +43,7 @@ async (page) => {
   };
   await setWindow();
   await openActivity("heavy");
-  ensure(await page.getByRole("checkbox", {name: "Global blocker", exact: true}).isChecked(), "ALL blocker is not checked when legacy issueIds are empty");
+  ensure(await page.getByRole("checkbox", {name: "Global blocker", exact: true}).isChecked(), "ALL scope is not reflected in the activity's actual issue assignments");
   const options = await dependency.locator("option").evaluateAll(elements => elements.map(element => element.value));
   ensure(options.join(",") === ",root", "Activity dependencies include self or another stream");
   await dependency.selectOption("root");
@@ -52,12 +52,10 @@ async (page) => {
   await page.getByRole("checkbox", {name: "Include weekends", exact: true}).check();
   ensure(await start.inputValue() === "2026-10-17", "Weekend-enabled dependency does not start on Saturday");
   await page.getByRole("checkbox", {name: "Include weekends", exact: true}).uncheck();
-  await page.getByRole("checkbox", {name: "Start date confirmed by team", exact: true}).check();
   await saveEditor();
   ensure(await indentation("root") === 0 && await indentation("heavy") === 14, "Activity labels do not show one dependency level");
   let saved = await state();
   ensure(saved.plans[0].activities[1].dependsOn === "root" && saved.plans[0].activities[1].start === "2026-10-30", "Dependency rewrites the authored fallback date");
-  ensure(saved.plans[0].activities[1].confirmedStart === "2026-10-19", "Confirmation does not track the scheduled date");
   await page.reload();
   await setWindow();
   ensure((await days(bars("heavy")))[0].join(",") === "2026-10-19,2026-10-21", "Dependent schedule does not survive reload");
@@ -70,7 +68,7 @@ async (page) => {
   ensure((await days(bars("next-root")))[0][0] === "2026-10-22", "Next stream does not follow all predecessor activities");
   ensure(await indentation("next-root") === 0 && await indentation("next-child") === 14, "Stream dependency is confused with activity indentation");
   ensure((await days(bars("next-offset")))[0][0] === "2026-10-26", "Stream root spacing was lost");
-  ensure(JSON.stringify(await days(bars("next-child"))) === '[["2026-10-23","2026-10-23"],["2026-10-26","2026-10-26"]]', "Stream shift loses internal dependencies or weekend gaps");
+  ensure(JSON.stringify(await days(bars("next-child"))) === '[["2026-10-23","2026-10-26"]]' && await bars("next-child").locator(".bar-gap.weekend").count() === 1, "Stream shift must keep one frame with the weekend hatched inside");
   await page.getByRole("button", {name: "Edit Example stream", exact: true}).click();
   ensure(await page.getByRole("combobox", {name: "Depends on · stream", exact: true}).locator('option[value="next"]').count() === 0, "Cyclic stream predecessor is selectable");
   await page.locator("#cancel-editor").click();
@@ -90,9 +88,9 @@ async (page) => {
   ensure((await state()).revision === beforeDrag + 1, "Drag issued multiple mutations");
   ensure((await days(bars("heavy")))[0][0] === "2026-10-20", "Dragging root did not move its activity successor");
   ensure((await days(bars("next-root")))[0][0] === "2026-10-23", "Dragging root did not cascade to the dependent stream");
-  ensure(await bars("heavy").first().evaluate(element => element.classList.contains("tentative")), "Upstream movement retained obsolete date confirmation");
+  ensure(await bars("heavy").first().evaluate(element => element.classList.contains("tentative")), "Work without a recorded start should be planned");
   await openActivity("heavy");
-  ensure(!await page.getByRole("checkbox", {name: "Start date confirmed by team", exact: true}).isChecked(), "Editor retains obsolete confirmation");
+  ensure(await page.getByRole("button", {name: "Started", exact: true}).getAttribute("aria-pressed") === "false", "Dependency changes invented an actual start");
   await page.locator("#cancel-editor").click();
   const lockedRevision = (await state()).revision;
   await drag(bars("heavy"), 1);
@@ -150,8 +148,9 @@ async (page) => {
   await page.getByRole("button", {name: "Edit Next stream", exact: true}).click();
   await page.getByRole("combobox", {name: "Depends on · stream", exact: true}).selectOption("");
   await saveEditor();
-  ensure(await page.evaluate(() => schedules.activities.get("next-root").start) === "2026-10-09", "Clearing the stream dependency does not restore authored roots");
-  ensure(await page.evaluate(() => schedules.activities.get("next-child").start) === "2026-10-12", "Clearing the stream dependency removes an internal activity dependency");
+  ensure(await page.evaluate(() => plannedSchedules.activities.get("next-root").start) === "2026-10-09", "Clearing the stream dependency does not restore the authored estimate");
+  ensure(await page.evaluate(() => schedules.activities.get("next-root").start === window.PocketSchedule.workingStart(addDays(today(), 1))), "A remaining active blocker must still delay the independent root");
+  ensure(await page.evaluate(() => schedules.activities.get("next-child").start === window.PocketSchedule.workingStart(addDays(schedules.activities.get("next-root").end, 1))), "Clearing the stream dependency removes the internal activity dependency");
   await openActivity("next-offset");
   await dependency.selectOption("next-child");
   await saveEditor();
@@ -165,5 +164,5 @@ async (page) => {
   await page.screenshot({path: ".playwright-mcp/dependency-indent-desktop.png", fullPage: true});
   ensure(JSON.stringify(await state()) === JSON.stringify(beforeIndentRender), "Rendering indentation changed saved state");
   ensure(errors.length === 0, `Browser errors: ${errors.join(", ")}`);
-  return {checks: "activity/stream dependencies, clearing dependencies, no cycles, exact successor dates, weekends, root spacing, cascade drag, confirmation, reload, issue unlink/retarget, partial blocking, empty targets, nested indentation, percentage alignment, mobile, viewer permissions", revision: (await state()).revision, mobile};
+  return {checks: "activity/stream dependencies, clearing dependencies, no cycles, exact successor dates, weekends, root spacing, cascade drag, planned/actual separation, reload, issue unlink/retarget, partial blocking, empty targets, nested indentation, percentage alignment, mobile, viewer permissions", revision: (await state()).revision, mobile};
 }

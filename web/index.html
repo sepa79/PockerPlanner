@@ -11,11 +11,13 @@
   <script src="/auth.js" defer></script>
   <script src="/progress.js" defer></script>
   <script src="/schedule.js" defer></script>
+  <script src="/live.js" defer></script>
+  <script src="/whatif.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><h1><img src="/pocketplanner-logo.svg" alt="PocketPlanner · simple test plan" width="204" height="44"></h1></div>
+    <div class="brand"><h1><img src="/pocketplanner-topbar.svg" alt="PocketPlanner" width="204" height="44"></h1><span id="app-version" class="app-version" aria-label="PocketPlanner version"></span><span id="live-status" class="live-status" role="status" title="Automatic updates from other sessions">Connecting…</span></div>
     <div class="header-actions"><select id="active-plan" aria-label="Active plan"></select><span id="today-label"></span><button class="button button-outline" id="auth-button">Sign in</button><button class="button button-primary edit-only" id="add-activity" hidden>＋ Activity</button></div>
   </header>
   <main>
@@ -30,14 +32,21 @@
       </nav>
       <div id="stats" class="stats" aria-label="Planner summary"></div>
     </div>
-    <div class="notice" id="date-notice" aria-label="Planning caveat"><span>◇</span><span id="date-notice-text" title="Confirm start dates in activity details. Durations are full planned days; weekends are optional per activity."></span></div>
     <section class="tab-panel workspace" role="tabpanel" id="panel-plan" aria-labelledby="tab-plan">
       <div class="plan-toolbar">
         <div class="calendar-controls"><button class="icon-button" id="previous-range" aria-label="Previous date range">‹</button><span id="range-label"></span><button class="icon-button" id="next-range" aria-label="Next date range">›</button><button class="button button-outline" id="jump-today">Today</button><select id="range-days" aria-label="Visible calendar range"><option value="7">7 days</option><option value="14">14 days</option><option value="21" selected>21 days</option><option value="28">28 days</option></select></div>
-        <div class="legend"><span><i class="legend-line"></i>Today</span><span><i class="legend-swatch tentative"></i>Unconfirmed</span><span><i class="legend-swatch blocked"></i>Blocked</span></div>
+        <div class="timeline-actions"><div class="legend"><span><i class="legend-line"></i>Today</span><span><i class="legend-swatch tentative"></i>Planned</span><span><i class="legend-swatch weekend"></i>Weekend</span><span title="Blocker / waiting period"><i class="legend-swatch blocked"></i>Pause</span><span><i class="legend-line deadline"></i>Deadline</span></div><button id="whatif-toggle" class="button button-outline" aria-expanded="false" aria-controls="whatif-panel" disabled>What if?</button></div>
+      </div>
+      <div id="plan-summary" class="plan-summary" aria-label="Plan deadline and forecast"></div>
+      <div id="whatif-panel" class="whatif-panel" hidden>
+        <form id="whatif-form">
+          <div class="whatif-controls"><label class="field">Blocker<select id="whatif-issue" required></select></label><div class="field"><label for="whatif-end">Assumed blocker end</label><div class="date-stepper"><button id="whatif-minus" type="button" class="button button-outline" aria-label="Blocker ends one day earlier">−1 day</button><input id="whatif-end" type="date" required><button id="whatif-plus" type="button" class="button button-outline" aria-label="Blocker ends one day later">+1 day</button></div></div></div>
+          <p id="whatif-empty" class="form-hint" hidden>No active blockers to simulate.</p>
+          <p class="form-hint">Blocked through this day. Work resumes on the next eligible day. Only this blocker's end changes; nothing is saved.</p><p id="whatif-error" role="status"></p>
+        </form>
       </div>
       <div id="gantt" class="gantt-scroll" aria-label="Interactive calendar Gantt chart"></div>
-      <div class="panel-footnote">Click to edit · Drag to reschedule · Weekdays by default · Include weekends per activity</div>
+      <div id="timeline-hint" class="panel-footnote">Click to edit · Drag to reschedule · Weekdays by default · Include weekends per activity</div>
     </section>
     <section class="tab-panel" role="tabpanel" id="panel-issues" aria-labelledby="tab-issues" hidden>
       <div class="panel-toolbar"><span>Issues</span><div class="section-actions"><select id="issue-status-filter" aria-label="Issue status"><option value="active">Active</option><option value="history">History</option></select><button class="button button-outline" id="blocker-filter">All issues</button><button class="button button-primary edit-only" id="add-issue" hidden>＋ Issue</button></div></div>

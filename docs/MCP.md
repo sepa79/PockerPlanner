@@ -4,6 +4,8 @@
 
 The official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) serves Streamable HTTP at `http(s)://<planner-host>:8765/mcp`, alongside the website in the same process. No separate container, stdio bridge, database, or socket mount is needed. The transport also accepts clients using the 2025-11-25 initialization handshake; the SDK owns protocol negotiation, not project code.
 
+MCP initialization reports the same application version as the website's top bar and public `/api/info` endpoint. A `-dev` suffix identifies unreleased work; it is not a new published release.
+
 Configure your MCP host with:
 
 - Transport: **Streamable HTTP**.
@@ -24,8 +26,8 @@ Use HTTPS when transmitting a bearer token outside the trusted development netwo
 | `get_access` | Report this request's identity, `canEdit`, and whether PH auth is configured |
 | `list_plans` | List plan IDs, names/descriptions and the workspace revision |
 | `get_plan` | Read a complete plan and current revision |
-| `create_plan` | Create an empty plan with an explicit stable ID |
-| `update_plan` | Patch only an existing plan's name/description |
+| `create_plan` | Create an empty plan with an explicit stable ID and optional deadline |
+| `update_plan` | Patch an existing plan's name, description or optional deadline |
 | `create_plan_item` | Add a complete stream, activity type, activity or issue; never overwrite an existing ID |
 | `update_plan_item` | Patch specified fields of an existing item without changing its ID |
 
@@ -33,13 +35,17 @@ The collection enum is `streams`, `activityTypes`, `activities`, or `issues`. Th
 
 Every mutation needs `expected_revision`: the exact integer workspace revision returned by the latest read or successful mutation. Successful mutations return `{revision, plan}` with the canonical saved plan. After a conflict, read again and review/reapply only the intended patch; do not merely increment the old revision and blindly replay. The existing SQLite transaction checks the revision again, including when a browser edits the plan during a tool call.
 
+Plan `deadline` is an optional exact `YYYY-MM-DD` target date, not the last Activity's calculated finish. `create_plan` accepts optional `deadline`; `update_plan` accepts `changes: {deadline: "2026-10-30"}` or null to clear it. This is a synthetic example, not an approved operational date. Never invent a deadline, move it with task changes or persist What if projections as real dates. Successful MCP saves also notify connected browsers through the existing store revision feed.
+
 IDs must have no leading/trailing whitespace; dates must be exact calendar strings `YYYY-MM-DD`. The entire saved workspace is limited to one MiB of compact UTF-8 JSON, including server-owned metadata. A small MCP edit that would exceed that limit fails with `INVALID_INPUT` without changing the saved revision or making the website unsaveable.
 
-Streams and activities accept `dependsOn` as an existing predecessor ID, or null to remove the dependency. Activity predecessors must belong to the same stream. Finish-to-start dates are resolved by the website's calendar owner; stored `start` remains the authored fallback date, not the projected start. Stream dependencies follow all predecessor activities and preserve independent-root spacing. Cycles and empty predecessor streams fail. Read the complete graph before proposing a dependency; never invent relationships or rewrite downstream fallback dates to mimic scheduling. `confirmedStart`, if supplied with `dateConfirmed: true`, must be a human-approved effective calendar date; upstream movement invalidates its displayed confirmation.
+Streams and activities accept `dependsOn` as an existing predecessor ID, or null to remove the dependency. Activity predecessors must belong to the same stream. Finish-to-start dates and blocker-aware forecasts are resolved by the website's calendar owner; stored `start` remains the authored fallback date, not the projected start. Stream dependencies follow all predecessor activities and preserve independent-root spacing. Cycles and empty predecessor streams fail. Read the complete graph before proposing a dependency; never invent relationships or rewrite downstream fallback dates to mimic scheduling.
 
 Patching activity `issueIds` means setting the desired actual issue assignments, not merely changing decorative links. Derive current assignments from the issue's `scope` and targets, not possibly stale activity links. Removing an activity from ALL/STREAMS narrows that issue to `scope: "ACTIVITIES"`, `streamIds: []` and the other affected `activityIds` in the same transaction. Progress/status-only patches leave assignments untouched. Issue scope can also be edited directly: ALL targets everything, STREAMS requires selected `streamIds`, ACTIVITIES requires explicit `activityIds` (an empty list affects nothing). Nonmatching target lists must be empty. Preserve other activities' assignments unless the operator explicitly requests otherwise.
 
-There are no MCP deletion, full-workspace replacement, direct SQL, filesystem, Docker, Jira API, or execution-control tools. Use the existing explicit JSON import workflow only when the human requests replacement. Issue `resolvedAt` is server-owned, not an editable MCP field. Close via `open: false`; reopen via `open: true`.
+Activity commands accept boolean action flags `started` and `done`; these are intents, not saved fields. `started: true` records UTC `startedAt` on Save; `done: true` requires `progress: 100` and records `completedAt`. Moving progress to 100 also records completion. Lowering it reopens work, retaining the start and clearing completion. Percent alone never invents an actual start. Server-owned timestamps and blocker intervals cannot be patched. Record actions only when explicitly authorized, not merely because a task was planned to start. Issue scopes drive recorded blocking spans automatically in the same store transaction.
+
+There are no MCP deletion, full-workspace replacement, direct SQL, filesystem, Docker, Jira API or execution-control tools. Use explicit JSON import only when requested. Issue `resolvedAt` is server-owned; close via `open: false`, reopen via `open: true`.
 
 ## Update example
 
@@ -55,7 +61,7 @@ First call `list_plans` and `get_plan`; select the actual stable IDs, not names 
 }
 ```
 
-Send this to `update_plan_item`, with the bearer token in the HTTP header. Treat these as example values, not a real plan or asserted status. To reschedule, patch `start` and optionally `durationDays`; duration always means the full planned count of scheduled days, never remaining work. Activities skip Saturday/Sunday by default. Patch `includeWeekends: true` only when weekend work is intended; false or omission means weekdays. A weekend start without opt-in begins work the following Monday. End dates are derived, not editable fields. Do not set `dateConfirmed: true` without team confirmation.
+Send this to `update_plan_item`, with the bearer token in the HTTP header. Treat these as example values, not a real plan or asserted status. To reschedule, patch `start` and optionally `durationDays`; duration always means the full planned count of scheduled days, never remaining work. Activities skip Saturday/Sunday by default. Patch `includeWeekends: true` only when weekend work is intended; false or omission means weekdays. A weekend start without opt-in begins work the following Monday. End dates are derived, not editable fields.
 
 An issue closure uses the same tool with `collection: issues`, its actual ID, `changes: {open: false}`, and the latest revision. Read the returned plan to see the server-recorded resolution timestamp.
 
@@ -75,6 +81,8 @@ An issue closure uses the same tool with `collection: issues`, its actual ID, `c
 Rovo is not connected now. Later, an agent may retrieve approved evidence from a separately authenticated Rovo connector, propose scoped changes, and apply them through these same planner commands. Credential handling, evidence mapping, approval policy, and any automated synchronization require a separate explicit contract. Nothing currently polls tickets or changes plans automatically.
 
 PocketHive executions can later reference stable plan, stream and activity IDs. No scenario launch, execution association, run-status fetch or automatic progress calculation is exposed yet.
+
+The agreed [PocketHive integration design](POCKETHIVE_INTEGRATION.md) records the future run/Activity mapping, requirement JSON references and start-recording workflow with optional journal evidence. Implementation is explicitly deferred; the existing tools do not accept these future fields or authorize execution control.
 
 ## Verification
 
