@@ -3,14 +3,15 @@
 from copy import deepcopy
 from typing import Literal
 
-from planner_store import InvalidState, RevisionConflict, read, write
+from planner_store import InvalidState, RevisionConflict, read, validate, write
+from planner_issues import assign_activity
 
 Collection = Literal["streams", "activityTypes", "activities", "issues"]
 EDITABLE_FIELDS = {
-    "streams": {"name", "description"},
+    "streams": {"name", "description", "dependsOn"},
     "activityTypes": {"name", "color"},
-    "activities": {"name", "streamId", "typeId", "start", "durationDays", "includeWeekends", "progress", "status", "issueIds", "dateConfirmed", "jiraUrl"},
-    "issues": {"title", "description", "scope", "streamIds", "blocker", "discovered", "open", "descriptionIncomplete", "jiraUrl"},
+    "activities": {"name", "streamId", "typeId", "start", "durationDays", "includeWeekends", "progress", "status", "issueIds", "dateConfirmed", "confirmedStart", "dependsOn", "jiraUrl"},
+    "issues": {"title", "description", "scope", "streamIds", "activityIds", "blocker", "discovered", "open", "descriptionIncomplete", "jiraUrl"},
 }
 
 
@@ -35,8 +36,10 @@ def _fields(changes, allowed):
         raise InvalidState("Supply nonempty changes containing only editable fields")
 
 
-def _save(document, plan_id):
+def _save(document, plan_id, workspace_result=False):
     saved = write(document)
+    if workspace_result:
+        return saved
     return {"revision": saved["revision"], "plan": _find(saved["plans"], plan_id, "plan")}
 
 
@@ -65,25 +68,49 @@ def update_plan(plan_id, changes, expected_revision):
     return _save(document, plan_id)
 
 
-def create_plan_item(plan_id, collection, item, expected_revision):
+def create_plan_item(plan_id, collection, item, expected_revision, workspace_result=False):
     if collection not in EDITABLE_FIELDS:
         raise InvalidState("Unknown plan collection")
     _fields(item, EDITABLE_FIELDS[collection] | {"id"})
     if not isinstance(item.get("id"), str) or not item["id"].strip():
         raise InvalidState("Supply the new item ID")
     document = _current(expected_revision)
-    items = _find(document["plans"], plan_id, "plan")[collection]
+    plan = _find(document["plans"], plan_id, "plan")
+    items = plan[collection]
     if any(existing["id"] == item["id"] for existing in items):
         raise InvalidState(f"Item already exists: {item['id']}")
     items.append(deepcopy(item))
-    return _save(document, plan_id)
+    if collection == "activities":
+        validate(document)
+        assign_activity(plan, items[-1])
+    return _save(document, plan_id, workspace_result)
 
 
-def update_plan_item(plan_id, collection, item_id, changes, expected_revision):
+def update_plan_item(plan_id, collection, item_id, changes, expected_revision, workspace_result=False):
     if collection not in EDITABLE_FIELDS:
         raise InvalidState("Unknown plan collection")
     _fields(changes, EDITABLE_FIELDS[collection])
     document = _current(expected_revision)
     plan = _find(document["plans"], plan_id, "plan")
-    _find(plan[collection], item_id, collection).update(deepcopy(changes))
-    return _save(document, plan_id)
+    item = _find(plan[collection], item_id, collection)
+    item.update(deepcopy(changes))
+    if collection == "activities" and "issueIds" in changes:
+        validate(document)
+        assign_activity(plan, item)
+    return _save(document, plan_id, workspace_result)
+
+
+def save_activity(document):
+    if not isinstance(document, dict) or set(document) != {"planId", "activityId", "item", "expectedRevision"}:
+        raise InvalidState("Supply planId, activityId, item and expectedRevision")
+    if not isinstance(document["planId"], str):
+        raise InvalidState("Supply the plan ID")
+    item = document["item"]
+    if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+        raise InvalidState("Supply the complete activity with its ID")
+    activity_id = document["activityId"]
+    if activity_id is None:
+        return create_plan_item(document["planId"], "activities", item, document["expectedRevision"], workspace_result=True)
+    if not isinstance(activity_id, str) or activity_id != item["id"]:
+        raise InvalidState("The activity ID cannot change")
+    return update_plan_item(document["planId"], "activities", activity_id, {key: value for key, value in item.items() if key != "id"}, document["expectedRevision"], workspace_result=True)

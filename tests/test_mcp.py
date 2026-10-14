@@ -158,6 +158,36 @@ class McpTests(unittest.TestCase):
             self.assert_failure(self.call("update_plan_item", {**arguments, "changes": {"includeWeekends": "true"}, "expected_revision": 2}, "admin-token"), "INVALID_INPUT")
             self.assertEqual(planner_store.read(), before)
 
+    def test_dependency_and_issue_assignment_commands_share_validation(self):
+        plan = self.example["plans"][0]
+        plan["streams"].append({"id": "next", "name": "Next stream", "description": ""})
+        plan["activities"].extend([{**plan["activities"][0], "id": "heavy"}, {**plan["activities"][0], "id": "next-task", "streamId": "next"}])
+        plan["issues"][0].update(scope="ALL", streamIds=[], blocker=True)
+        plan["activities"][0]["issueIds"] = []
+        planner_store.write(self.example)
+        with patch("pockethive_auth._request", side_effect=self.identity):
+            def update(collection, item_id, changes, token="admin-token"):
+                return self.call("update_plan_item", {"plan_id": "example-plan", "collection": collection, "item_id": item_id, "changes": changes, "expected_revision": planner_store.read()["revision"]}, token)
+
+            self.assert_failure(update("activities", "heavy", {"dependsOn": "example"}, "viewer-token"), "AUTH_403")
+            self.assertEqual(update("activities", "heavy", {"dependsOn": "example"})["structuredContent"]["plan"]["activities"][1]["dependsOn"], "example")
+            self.assertEqual(update("streams", "next", {"dependsOn": "demo"})["structuredContent"]["plan"]["streams"][1]["dependsOn"], "demo")
+            before = planner_store.read()
+            for collection, item_id, changes in [("activities", "example", {"dependsOn": "heavy"}), ("activities", "heavy", {"dependsOn": "next-task"}), ("streams", "demo", {"dependsOn": "next"}), ("activities", "heavy", {"confirmedStart": "2026-W42-1"})]:
+                self.assert_failure(update(collection, item_id, changes), "INVALID_INPUT")
+                self.assertEqual(planner_store.read(), before)
+            updated = update("activities", "example", {"issueIds": []})["structuredContent"]
+            issue = updated["plan"]["issues"][0]
+            self.assertEqual(issue["scope"], "ACTIVITIES")
+            self.assertEqual(issue["activityIds"], ["heavy", "next-task"])
+            self.assertTrue(issue["open"] and issue["blocker"])
+            self.assertNotIn("resolvedAt", issue)
+            before = planner_store.read()
+            self.assert_failure(update("issues", "example-issue", {"activityIds": ["missing"]}), "INVALID_INPUT")
+            self.assertEqual(planner_store.read(), before)
+            retargeted = update("issues", "example-issue", {"activityIds": ["next-task"]})["structuredContent"]
+            self.assertEqual(retargeted["plan"]["issues"][0]["activityIds"], ["next-task"])
+
     def test_scoped_edits_cannot_bypass_workspace_validation_or_size(self):
         planner_store.write(self.example)
         before = planner_store.read()

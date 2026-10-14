@@ -56,7 +56,7 @@ async (page) => {
   const checkbox = page.getByRole("checkbox", {name: "Include weekends", exact: true});
   const save = page.locator("#editor-form .dialog-actions").getByRole("button", {name: "Save", exact: true});
   const saveEditor = async () => {
-    const response = page.waitForResponse(result => result.request().method() === "PUT" && result.url().endsWith("/api/state"));
+    const response = page.waitForResponse(result => result.request().method() === "PUT" && /\/api\/(?:state|activities)$/.test(result.url()));
     await save.click();
     ensure((await response).ok(), "Saving the activity failed");
     await editor.waitFor({state: "hidden"});
@@ -80,7 +80,7 @@ async (page) => {
   const dragOneDay = async locator => {
     const box = await locator.boundingBox();
     const dayWidth = await locator.evaluate(element => element.parentElement.clientWidth / Number(document.getElementById("range-days").value));
-    const response = page.waitForResponse(result => result.request().method() === "PUT" && result.url().endsWith("/api/state"));
+    const response = page.waitForResponse(result => result.request().method() === "PUT" && /\/api\/(?:state|activities)$/.test(result.url()));
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 + dayWidth, box.y + box.height / 2, {steps: 8});

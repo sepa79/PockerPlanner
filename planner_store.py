@@ -74,6 +74,27 @@ def _items(document, key, maximum=500):
     return items, seen
 
 
+def _dependencies(items, label, same_stream=False):
+    indexed = {item["id"]: item for item in items}
+    for item in items:
+        predecessor = item.get("dependsOn")
+        if predecessor is not None:
+            if not isinstance(predecessor, str) or predecessor not in indexed or predecessor == item["id"]:
+                raise InvalidState(f"Invalid {label} dependency")
+            if same_stream and indexed[predecessor]["streamId"] != item["streamId"]:
+                raise InvalidState("Activity dependencies must stay within the same stream")
+    resolved = set()
+    for item in items:
+        chain = set()
+        current = item["id"]
+        while current is not None and current not in resolved:
+            if current in chain:
+                raise InvalidState(f"Cyclic {label} dependency")
+            chain.add(current)
+            current = indexed[current].get("dependsOn")
+        resolved.update(chain)
+
+
 def _validate_plan(plan):
     if set(plan) != {"id", "name", "description", "streams", "activityTypes", "activities", "issues"}:
         raise InvalidState("Invalid plan fields")
@@ -81,10 +102,10 @@ def _validate_plan(plan):
     _text(plan.get("description"), "plan description", 12000)
     streams, stream_ids = _items(plan, "streams")
     types, type_ids = _items(plan, "activityTypes")
-    activities, _ = _items(plan, "activities")
+    activities, activity_ids = _items(plan, "activities")
     issues, issue_ids = _items(plan, "issues")
     for stream in streams:
-        if set(stream) != {"id", "name", "description"}:
+        if not {"id", "name", "description"} <= set(stream) or not set(stream) <= {"id", "name", "description", "dependsOn"}:
             raise InvalidState("Invalid stream fields")
         _text(stream.get("name"), "stream name", 100, True)
         _text(stream.get("description"), "stream description")
@@ -96,13 +117,18 @@ def _validate_plan(plan):
     for issue in issues:
         _text(issue.get("title"), "issue title", 160, True)
         _text(issue.get("description"), "issue description")
-        if issue.get("scope") not in ("ALL", "STREAMS"):
-            raise InvalidState("Issue scope must be ALL or STREAMS")
+        if issue.get("scope") not in ("ALL", "STREAMS", "ACTIVITIES"):
+            raise InvalidState("Issue scope must be ALL, STREAMS or ACTIVITIES")
         targets = issue.get("streamIds")
         if not isinstance(targets, list) or any(not isinstance(target, str) for target in targets) or len(targets) != len(set(targets)) or any(target not in stream_ids for target in targets):
             raise InvalidState("Issue refers to an invalid stream")
-        if (issue["scope"] == "ALL" and targets) or (issue["scope"] == "STREAMS" and not targets):
+        if (issue["scope"] != "STREAMS" and targets) or (issue["scope"] == "STREAMS" and not targets):
             raise InvalidState("Select ALL or at least one affected stream")
+        selected = issue.get("activityIds", [])
+        if not isinstance(selected, list) or any(not isinstance(target, str) for target in selected) or len(selected) != len(set(selected)) or any(target not in activity_ids for target in selected):
+            raise InvalidState("Issue refers to an invalid activity")
+        if (issue["scope"] != "ACTIVITIES" and selected) or (issue["scope"] == "ACTIVITIES" and "activityIds" not in issue):
+            raise InvalidState("Select activities only for ACTIVITIES scope")
         _url(issue.get("jiraUrl"), "issue Jira URL")
         if type(issue.get("open")) is not bool or type(issue.get("blocker")) is not bool or type(issue.get("descriptionIncomplete")) is not bool:
             raise InvalidState("Invalid issue flags")
@@ -130,9 +156,16 @@ def _validate_plan(plan):
             raise InvalidState("Progress must be 0–100")
         if type(activity.get("dateConfirmed")) is not bool:
             raise InvalidState("Invalid date confirmation flag")
+        if activity.get("confirmedStart") is not None:
+            _calendar_date(activity["confirmedStart"], "Confirmed activity start date")
         blockers = activity.get("issueIds")
         if not isinstance(blockers, list) or any(not isinstance(issue_id, str) for issue_id in blockers) or len(blockers) != len(set(blockers)) or any(issue_id not in issue_ids for issue_id in blockers):
             raise InvalidState("Activity refers to an invalid issue in its plan")
+    _dependencies(streams, "stream")
+    _dependencies(activities, "activity", same_stream=True)
+    populated_streams = {activity["streamId"] for activity in activities}
+    if any(stream.get("dependsOn") is not None and stream["dependsOn"] not in populated_streams for stream in streams):
+        raise InvalidState("A predecessor stream must contain at least one activity")
 
 
 def validate(document):

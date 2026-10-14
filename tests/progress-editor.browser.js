@@ -55,7 +55,7 @@ async (page) => {
   await page.locator(".activity-name").first().click();
   ensure(await number.inputValue() === "25", "Cancel did not discard the draft");
   await done.click();
-  const savedResponse = page.waitForResponse(response => response.request().method() === "PUT" && response.url().endsWith("/api/state"));
+  const savedResponse = page.waitForResponse(response => response.request().method() === "PUT" && /\/api\/(?:state|activities)$/.test(response.url()));
   await save.click();
   ensure((await savedResponse).ok(), "Saving Done failed");
   await page.locator("#editor").waitFor({state: "hidden"});
@@ -76,7 +76,7 @@ async (page) => {
   const mobile = await page.locator("#editor").evaluate(element => ({width: element.clientWidth, contentWidth: element.scrollWidth, pageOverflow: document.documentElement.scrollWidth > innerWidth}));
   ensure(mobile.contentWidth <= mobile.width && !mobile.pageOverflow, "The editor overflows on mobile");
   await page.setViewportSize({width: 1171, height: 1252});
-  const typedResponse = page.waitForResponse(response => response.request().method() === "PUT" && response.url().endsWith("/api/state"));
+  const typedResponse = page.waitForResponse(response => response.request().method() === "PUT" && /\/api\/(?:state|activities)$/.test(response.url()));
   await save.click();
   ensure((await typedResponse).ok(), "Saving typed progress failed");
   await page.locator("#editor").waitFor({state: "hidden"});

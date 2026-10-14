@@ -36,6 +36,7 @@ jobs:
           node --check tests/weekends.browser.js
           node --check tests/conflicts-import.browser.js
           node --check tests/editor-pending.browser.js
+          node --check tests/dependencies-issues.browser.js
           node --test tests/*.test.cjs
       - name: Select image tags
         id: image

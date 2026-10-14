@@ -38,7 +38,7 @@ async (page) => {
   ensure(JSON.stringify(await state()) === JSON.stringify(beforeLabels), "A list label changed issue data");
   await issue.click();
   await page.getByRole("checkbox", {name: "Blocker", exact: true}).uncheck();
-  const unmarkResponse = page.waitForResponse(response => response.request().method() === "PUT" && response.url().endsWith("/api/state"));
+  const unmarkResponse = page.waitForResponse(response => response.request().method() === "PUT" && /\/api\/(?:state|activities)$/.test(response.url()));
   await page.locator("#editor-form .dialog-actions").getByRole("button", {name: "Save", exact: true}).click();
   ensure((await unmarkResponse).ok(), "Blocker editing inside the issue failed");
   await page.locator("#editor").waitFor({state: "hidden"});
@@ -46,7 +46,7 @@ async (page) => {
   ensure(await page.locator("#issues .issue").filter({hasText: "Example issue"}).locator(".issue-kind").textContent() === "Issue", "Nonblocker label is misleading");
   await issue.click();
   await page.getByRole("checkbox", {name: "Blocker", exact: true}).check();
-  const markResponse = page.waitForResponse(response => response.request().method() === "PUT" && response.url().endsWith("/api/state"));
+  const markResponse = page.waitForResponse(response => response.request().method() === "PUT" && /\/api\/(?:state|activities)$/.test(response.url()));
   await page.locator("#editor-form .dialog-actions").getByRole("button", {name: "Save", exact: true}).click();
   ensure((await markResponse).ok(), "Restoring the blocker flag inside the issue failed");
   await page.locator("#editor").waitFor({state: "hidden"});
@@ -55,7 +55,7 @@ async (page) => {
   ensure(await page.getByRole("checkbox", {name: "Incomplete", exact: true}).isChecked(), "Incomplete flag was not loaded");
   ensure(await page.locator(".issue-description-heading input[name=descriptionIncomplete]").count() === 1, "Incomplete is not beside Description");
   ensure((await page.locator("#incomplete-hint").textContent()).includes("does not affect blockers"), "Incomplete has no functional explanation");
-  const enterResponse = page.waitForResponse(response => response.request().method() === "PUT" && response.url().endsWith("/api/state"));
+  const enterResponse = page.waitForResponse(response => response.request().method() === "PUT" && /\/api\/(?:state|activities)$/.test(response.url()));
   await page.getByRole("textbox", {name: "Issue title", exact: true}).press("Enter");
   ensure((await enterResponse).ok(), "Enter did not save the issue");
   await page.locator("#editor").waitFor({state: "hidden"});
@@ -71,7 +71,7 @@ async (page) => {
   ensure(await page.locator("#editor").evaluate(element => element.open), "Close issue bypassed form validation");
   ensure((await state()).revision === before.revision, "Invalid Close issue was saved");
   await page.getByRole("textbox", {name: "Issue title", exact: true}).fill("Example issue");
-  const closeResponse = page.waitForResponse(response => response.request().method() === "PUT" && response.url().endsWith("/api/state"));
+  const closeResponse = page.waitForResponse(response => response.request().method() === "PUT" && /\/api\/(?:state|activities)$/.test(response.url()));
   await page.getByRole("button", {name: "Close issue", exact: true}).click();
   ensure((await closeResponse).ok(), "Closing the issue failed");
   await page.locator("#editor").waitFor({state: "hidden"});
@@ -94,7 +94,7 @@ async (page) => {
   await issue.click();
   ensure(await page.getByRole("button", {name: "Reopen issue", exact: true}).isVisible(), "Closed issue has no Reopen action");
   await page.getByRole("textbox", {name: "Description", exact: true}).fill("Updated while closed");
-  const saveResponse = page.waitForResponse(response => response.request().method() === "PUT" && response.url().endsWith("/api/state"));
+  const saveResponse = page.waitForResponse(response => response.request().method() === "PUT" && /\/api\/(?:state|activities)$/.test(response.url()));
   await page.locator("#editor-form .dialog-actions").getByRole("button", {name: "Save", exact: true}).click();
   ensure((await saveResponse).ok(), "Saving a closed issue failed");
   await page.locator("#editor").waitFor({state: "hidden"});
@@ -111,7 +111,7 @@ async (page) => {
   await page.setViewportSize({width: 390, height: 844});
   const mobile = await page.locator("#editor").evaluate(element => ({width: element.clientWidth, contentWidth: element.scrollWidth, pageOverflow: document.documentElement.scrollWidth > innerWidth}));
   ensure(mobile.contentWidth <= mobile.width && !mobile.pageOverflow, "Issue editor overflows on mobile");
-  const reopenResponse = page.waitForResponse(response => response.request().method() === "PUT" && response.url().endsWith("/api/state"));
+  const reopenResponse = page.waitForResponse(response => response.request().method() === "PUT" && /\/api\/(?:state|activities)$/.test(response.url()));
   await page.getByRole("button", {name: "Reopen issue", exact: true}).click();
   ensure((await reopenResponse).ok(), "Reopening failed");
   await page.locator("#editor").waitFor({state: "hidden"});
@@ -129,7 +129,7 @@ async (page) => {
   ensure(await page.locator("input[name=open]").inputValue() === "true", "New issues are not open by default");
   ensure(await page.locator("#editor-form .dialog-actions button[type=submit]").isVisible(), "Save visibility was changed by the lifecycle button");
   await page.getByRole("textbox", {name: "Issue title", exact: true}).fill("New issue");
-  const createResponse = page.waitForResponse(response => response.request().method() === "PUT" && response.url().endsWith("/api/state"));
+  const createResponse = page.waitForResponse(response => response.request().method() === "PUT" && /\/api\/(?:state|activities)$/.test(response.url()));
   await page.locator("#editor-form .dialog-actions").getByRole("button", {name: "Save", exact: true}).click();
   ensure((await createResponse).ok(), "Creating an issue failed");
   await page.locator("#editor").waitFor({state: "hidden"});

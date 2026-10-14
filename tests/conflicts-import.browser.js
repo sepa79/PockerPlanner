@@ -5,7 +5,7 @@ async (page) => {
   const errors = [];
   const writes = [];
   page.on("pageerror", error => errors.push(error.message));
-  page.on("request", request => { if (request.method() === "PUT" && request.url().endsWith("/api/state")) writes.push(request.url()); });
+  page.on("request", request => { if (request.method() === "PUT" && /\/api\/(?:state|activities)$/.test(request.url())) writes.push(request.url()); });
   await page.setViewportSize({width: 1171, height: 1252});
   await page.evaluate(() => window.PocketAuth.login("local-admin"));
   await page.evaluate(async () => {
@@ -36,7 +36,7 @@ async (page) => {
     return response.json();
   }, operation);
   const responseTo = action => {
-    const response = page.waitForResponse(result => result.request().method() === "PUT" && result.url().endsWith("/api/state"));
+    const response = page.waitForResponse(result => result.request().method() === "PUT" && /\/api\/(?:state|activities)$/.test(result.url()));
     return action().then(() => response);
   };
   const assertConflict = async (action, expected) => {

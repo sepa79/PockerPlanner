@@ -6,7 +6,7 @@ async (page) => {
   const writes = [];
   const releases = [];
   page.on("pageerror", error => errors.push(error.message));
-  page.on("request", request => { if (request.method() === "PUT" && request.url().endsWith("/api/state")) writes.push(request.url()); });
+  page.on("request", request => { if (request.method() === "PUT" && /\/api\/(?:state|activities)$/.test(request.url())) writes.push(request.url()); });
   await page.setViewportSize({width: 1171, height: 1252});
   await page.evaluate(() => window.PocketAuth.login("local-admin"));
   await page.evaluate(async () => {
@@ -42,14 +42,14 @@ async (page) => {
         else await route.fulfill({response: deferRequest ? await route.fetch() : response});
       } finally { complete(); }
     };
-    await page.route("**/api/state", handler);
+    await page.route(/\/api\/(?:state|activities)$/, handler);
     return {
       waiting,
       resume: async () => {
         release();
         await finished;
         await page.waitForFunction(() => !mutationPending);
-        await page.unroute("**/api/state", handler);
+        await page.unroute(/\/api\/(?:state|activities)$/, handler);
       },
     };
   };
@@ -77,7 +77,7 @@ async (page) => {
     } finally { page.off("dialog", dismiss); }
   };
   const saveNormally = async () => {
-    const response = page.waitForResponse(result => result.request().method() === "PUT" && result.url().endsWith("/api/state"));
+    const response = page.waitForResponse(result => result.request().method() === "PUT" && /\/api\/(?:state|activities)$/.test(result.url()));
     await save.click();
     ensure((await response).ok(), "A normal save failed");
     await editor.waitFor({state: "hidden"});

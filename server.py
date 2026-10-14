@@ -15,6 +15,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
 
 from planner_mcp import create_mcp_server, transport_security
+from planner_commands import save_activity
 from planner_store import MAX_DOCUMENT_BYTES, InvalidState, RevisionConflict, read, write
 from pockethive_auth import AuthError, access, login, require_editor
 
@@ -58,6 +59,12 @@ async def session_endpoint(request):
     return JSONResponse(await run_in_threadpool(access, request.headers.get("authorization")))
 
 
+async def activity_endpoint(request):
+    await run_in_threadpool(require_editor, request.headers.get("authorization"))
+    document = await _document(request)
+    return JSONResponse(await run_in_threadpool(save_activity, document))
+
+
 async def login_endpoint(request):
     document = await _document(request)
     return JSONResponse(await run_in_threadpool(login, document))
@@ -98,6 +105,7 @@ def create_app():
     application = Starlette(
         routes=[
             Route("/api/state", state_endpoint, methods=["GET", "PUT"]),
+            Route("/api/activities", activity_endpoint, methods=["PUT"]),
             Route("/api/session", session_endpoint, methods=["GET"]),
             Route("/api/session/login", login_endpoint, methods=["POST"]),
             Route("/health", health_endpoint),

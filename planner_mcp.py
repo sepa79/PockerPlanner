@@ -79,7 +79,7 @@ def create_mcp_server():
 
     @server.tool(annotations=update)
     def update_plan_item(plan_id: str, collection: planner_commands.Collection, item_id: str, changes: dict[str, Any], expected_revision: StrictInt, context: Context) -> dict[str, Any]:
-        """Patch selected fields of one existing item. For activities use progress/status/start/durationDays/includeWeekends; duration is full planned weekdays unless includeWeekends=true. For issues use open=false to close; the store owns resolvedAt. IDs and resolution timestamps are not editable. Requires local-admin."""
+        """Patch selected fields of one existing item. Streams and activities accept dependsOn (predecessor ID or null); activity dependencies stay within their stream and calendar starts follow predecessors. Duration is full planned weekdays unless includeWeekends=true. Activity issueIds sets its actual issue assignments, narrowing broad issue scopes when unlinked. Issues accept ALL/STREAMS/ACTIVITIES scope with streamIds/activityIds; open=false closes and the store owns resolvedAt. IDs and resolution timestamps are not editable. Requires local-admin."""
         return _call(context, planner_commands.update_plan_item, plan_id, collection, item_id, changes, expected_revision, editor=True)
 
     return server

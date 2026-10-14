@@ -12,7 +12,7 @@ Python 3.12, SQLite, Starlette/Uvicorn, the official MCP Python SDK, and plain J
 
 ## Portainer
 
-The release image is `ghcr.io/sepa79/pocketplanner:v0.1.1`, built for amd64 and arm64 by GitHub Actions. It is public and can be pulled without a registry login.
+The release image is `ghcr.io/sepa79/pocketplanner:v0.2.0`, built for amd64 and arm64 by GitHub Actions. It is public and can be pulled without a registry login.
 
 1. Open **Stacks → Add stack → Web editor**.
 2. Paste [compose.yaml](compose.yaml).
@@ -48,9 +48,11 @@ Click activities to view details; local-admin can edit them and drag their bars.
 
 Activity progress has a synchronized 0–100 slider and numeric input with native stepper arrows. **Done** sets the draft progress to 100%; **Save** persists it, while **Cancel** discards it. All progress controls remain disabled for view-only users.
 
+Choose **Depends on · activity** in activity details to follow another activity in the same stream. **Depends on · stream** in stream details starts that stream after all its predecessor's activities finish. Starts follow automatically on the next eligible day, respecting **Include weekends**; independent activities in a dependent stream retain their calendar spacing. Moving a predecessor cascades to its successors. Auto-scheduled starts and bars cannot move independently: move the predecessor or clear the dependency. Cycles are rejected. Confirmation becomes pending again when an upstream edit changes a confirmed effective start. Timeline names indent at each activity-dependency level, without moving bars or percentage columns. Dependencies do not infer completion from progress or launch tests.
+
 Click a stream name or its arrow on the timeline to collapse or expand its activities, including in view-only mode. The header always shows overall progress: the rounded, equal-weight average of all activities in that stream, not just the visible date range. Empty streams show `—`. Collapsed streams retain named summary segments on actual scheduled days, leaving gaps and excluded weekends free. Expansion state is local to each plan during the current page visit and does not change saved plan data.
 
-Issues show noninteractive **Blocker / Issue** and **ALL / selected streams** labels. Click the issue title to open its details and edit the blocker flag or scope. Open blockers tint and slowly pulse their affected streams red. A fully blocked plan displays the cartoon **BLOCKED!** entry warning, which can be acknowledged or opened directly in the blockers view. Acknowledgement does not resolve an issue.
+Issues show noninteractive **Blocker / Issue** and **ALL / selected streams / selected activities** labels. Click the issue title to open its details and edit the blocker flag or scope. Unchecking an issue in Activity removes that activity from the issue itself: ALL or stream-wide scopes become explicit lists of the other affected activities. Those other activities remain blocked. An empty activity selection affects nothing. Open blockers tint and slowly pulse affected unfinished activities and their stream headers red. The cartoon **BLOCKED!** entry warning appears only when every unfinished activity is blocked; it can be acknowledged or opened directly in the blockers view. Acknowledgement does not resolve an issue.
 
 The Issues list defaults to **Active**; select **History** for closed issues. The blocker filter works within either view. In issue details, **Close issue** or **Reopen issue** saves your current edits and changes the issue state. Closing a blocker removes its blocking effect without deleting links or changing other blockers. **Incomplete**, beside the description, is only a reminder that details are missing; flagged issues show an `incomplete` label in the list. It does not affect dates, progress, or blocker status.
 
@@ -105,6 +107,7 @@ node --check tests/issue-editor.browser.js
 node --check tests/weekends.browser.js
 node --check tests/conflicts-import.browser.js
 node --check tests/editor-pending.browser.js
+node --check tests/dependencies-issues.browser.js
 node --test tests/*.test.cjs
 ```
 
@@ -121,3 +124,5 @@ The MCP tests exercise real SDK protocol handling, tool discovery, scoped edits,
 `tests/editor-pending.browser.js` delays real QA responses to check the pending-edit lock, duplicate-submit/close/Escape guards, success/error recovery, deletion/lifecycle actions, and the 1,000-character activity description boundary without reducing other description limits.
 
 `tests/issue-editor.browser.js` uses the same isolated-server precondition and checks Close/Reopen, validation, Save/Cancel, persistence, blocker scope, incomplete labels, Active/History filtering, the full-block warning action, creation, and view-only/mobile behavior.
+
+`tests/dependencies-issues.browser.js` checks real activity/stream dependency editing, date previews, weekend gaps, cascading root dragging, confirmation invalidation, reload persistence, bidirectional issue assignment, precise blocker labels, partial blocking, view-only controls and mobile layout. Python and calendar tests also reject missing/cyclic/cross-stream dependencies and invalid issue targets without changing saved state.

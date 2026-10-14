@@ -5,7 +5,7 @@ COPY requirements.txt ./
 RUN python -m pip install --no-cache-dir --upgrade pip==26.2.1 \
     && python -m pip install --no-cache-dir -r requirements.txt \
     && python -m pip uninstall --yes pip
-COPY planner_store.py planner_commands.py planner_mcp.py pockethive_auth.py server.py import_workspace.py seed.json ./
+COPY planner_store.py planner_commands.py planner_issues.py planner_mcp.py pockethive_auth.py server.py import_workspace.py seed.json ./
 COPY web ./web
 RUN mkdir -p /data && chown -R 10001:10001 /data
 ENV TESTPLANNER_DB=/data/planner.sqlite3 PORT=8765 PYTHONDONTWRITEBYTECODE=1

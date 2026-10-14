@@ -82,3 +82,82 @@ test("summary shows only actual scheduled days and respects individual weekend o
   assert.deepEqual(plain(mixed.days), ["2026-10-16", "2026-10-17", "2026-10-18", "2026-10-19", "2026-10-20"]);
   assert.deepEqual(plain(mixed.segments), [{start: "2026-10-16", durationDays: 5, offsetDays: 0}]);
 });
+
+const dependentPlan = () => ({
+  streams: [{id: "first"}, {id: "next", dependsOn: "first"}],
+  activities: [
+    {id: "minimal", streamId: "first", start: "2026-10-16", durationDays: 1},
+    {id: "heavy", streamId: "first", start: "2026-10-30", durationDays: 3, dependsOn: "minimal"},
+    {id: "next-root", streamId: "next", start: "2026-10-09", durationDays: 1},
+    {id: "next-offset", streamId: "next", start: "2026-10-13", durationDays: 1},
+    {id: "next-child", streamId: "next", start: "2026-10-14", durationDays: 2, dependsOn: "next-root"},
+  ],
+});
+
+test("activity dependencies start immediately after full planned work, respecting weekends", () => {
+  const document = dependentPlan();
+  const result = schedule.plan(document);
+  assert.equal(result.activities.get("heavy").start, "2026-10-19");
+  assert.equal(result.activities.get("heavy").end, "2026-10-21");
+  assert.equal(document.activities[1].start, "2026-10-30");
+  document.activities[1].includeWeekends = true;
+  const weekend = schedule.plan(document);
+  assert.equal(weekend.activities.get("heavy").start, "2026-10-17");
+  assert.equal(weekend.activities.get("heavy").end, "2026-10-19");
+});
+
+test("stream dependencies preserve root spacing and schedule internal successors", () => {
+  const result = schedule.plan(dependentPlan());
+  assert.equal(result.streams.get("first").end, "2026-10-21");
+  assert.equal(result.activities.get("next-root").start, "2026-10-22");
+  assert.equal(result.activities.get("next-offset").start, "2026-10-26");
+  assert.equal(result.activities.get("next-child").start, "2026-10-23");
+  assert.equal(result.activities.get("next-child").end, "2026-10-26");
+  assert.deepEqual(plain(result.streams.get("next").days), ["2026-10-22", "2026-10-23", "2026-10-26"]);
+});
+
+test("moving a root cascades across activities and streams without rewriting authored dates", () => {
+  const document = dependentPlan();
+  document.activities[0].start = "2026-10-19";
+  document.activities[0].durationDays = 2;
+  const authored = JSON.stringify(document);
+  const result = schedule.plan(document);
+  assert.equal(result.activities.get("heavy").start, "2026-10-21");
+  assert.equal(result.activities.get("heavy").end, "2026-10-23");
+  assert.equal(result.activities.get("next-root").start, "2026-10-26");
+  assert.equal(result.activities.get("next-offset").start, "2026-10-30");
+  assert.equal(JSON.stringify(document), authored);
+});
+
+test("dependency projections are independent of record order and progress", () => {
+  const document = dependentPlan();
+  document.streams.reverse();
+  document.activities.reverse();
+  document.activities.forEach(activity => { activity.progress = 100; });
+  const result = schedule.plan(document);
+  assert.equal(result.activities.get("heavy").start, "2026-10-19");
+  assert.equal(result.activities.get("next-root").start, "2026-10-22");
+});
+
+test("tied stream roots use the earliest eligible successor day regardless of record order", () => {
+  const document = dependentPlan();
+  document.activities = [document.activities[0], document.activities[2], {...document.activities[2], id: "continuous-root", includeWeekends: true}];
+  document.activities[0].start = "2026-10-16";
+  const scheduled = schedule.plan(document);
+  assert.equal(scheduled.activities.get("continuous-root").start, "2026-10-17");
+  assert.equal(scheduled.activities.get("next-root").start, "2026-10-19");
+  document.activities.reverse();
+  assert.deepEqual(schedule.plan(document), scheduled);
+});
+
+test("invalid dependency graphs fail explicitly instead of looping", () => {
+  const cyclic = dependentPlan();
+  cyclic.activities[0].dependsOn = "heavy";
+  assert.throws(() => schedule.plan(cyclic), /Invalid activity dependencies/);
+  const streams = dependentPlan();
+  streams.streams[0].dependsOn = "next";
+  assert.throws(() => schedule.plan(streams), /Invalid stream dependencies/);
+  const empty = dependentPlan();
+  empty.activities = empty.activities.filter(activity => activity.streamId !== "first");
+  assert.throws(() => schedule.plan(empty), /predecessor stream needs activities/);
+});

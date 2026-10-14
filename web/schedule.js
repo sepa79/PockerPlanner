@@ -35,6 +35,44 @@ window.PocketSchedule = (() => {
   function summary(activities) {
     return fromDays([...new Set(activities.flatMap(item => activity(item).days))].sort());
   }
+  function plan(document) {
+    const activities = new Map();
+    const streams = new Map();
+    const pendingStreams = new Map(document.streams.map(stream => [stream.id, stream]));
+    while (pendingStreams.size) {
+      let progressed = false;
+      for (const [streamId, stream] of pendingStreams) {
+        if (stream.dependsOn && !streams.has(stream.dependsOn)) continue;
+        const items = document.activities.filter(item => item.streamId === streamId);
+        const roots = items.filter(item => !item.dependsOn).sort((first, second) => workingStart(first.start, first.includeWeekends === true).localeCompare(workingStart(second.start, second.includeWeekends === true)) || Number(second.includeWeekends === true) - Number(first.includeWeekends === true) || first.id.localeCompare(second.id));
+        let shift = 0;
+        if (stream.dependsOn && roots.length) {
+          const predecessor = streams.get(stream.dependsOn);
+          if (!predecessor.end) throw new Error("A predecessor stream needs activities");
+          const anchor = workingStart(roots[0].start, roots[0].includeWeekends === true);
+          const start = workingStart(addDays(predecessor.end, 1), roots[0].includeWeekends === true);
+          shift = dayDiff(anchor, start);
+        }
+        const pendingActivities = new Map(items.map(item => [item.id, item]));
+        while (pendingActivities.size) {
+          let resolved = false;
+          for (const [activityId, item] of pendingActivities) {
+            if (item.dependsOn && !activities.has(item.dependsOn)) continue;
+            const start = item.dependsOn ? addDays(activities.get(item.dependsOn).end, 1) : addDays(workingStart(item.start, item.includeWeekends === true), shift);
+            activities.set(activityId, activity({...item, start}));
+            pendingActivities.delete(activityId);
+            resolved = true;
+          }
+          if (!resolved) throw new Error("Invalid activity dependencies");
+        }
+        streams.set(streamId, fromDays([...new Set(items.flatMap(item => activities.get(item.id).days))].sort()));
+        pendingStreams.delete(streamId);
+        progressed = true;
+      }
+      if (!progressed) throw new Error("Invalid stream dependencies");
+    }
+    return {activities, streams};
+  }
   function visibleSegments(schedule, windowStart, windowDays, progress) {
     const completedDays = schedule.days.length * progress / 100;
     return schedule.segments.flatMap(segment => {
@@ -47,5 +85,5 @@ window.PocketSchedule = (() => {
       return [{start: addDays(windowStart, visibleStart), end: addDays(windowStart, visibleEnd - 1), offset: visibleStart, durationDays: visibleEnd - visibleStart, progress: visibleProgress}];
     });
   }
-  return {dateAt, addDays, dayDiff, isWeekend, workingStart, activity, summary, visibleSegments};
+  return {dateAt, addDays, dayDiff, isWeekend, workingStart, activity, summary, plan, visibleSegments};
 })();
