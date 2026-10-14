@@ -61,15 +61,3 @@ Do not use an unrestricted `*` allowlist. These values are not CORS permission o
 The profile requires a shared managed root and placement capability. HiveForge supplies `HIVEFORGE_BIND_SOURCE_DIR`. Durable data lives in `state/pocketplanner`, outside replace-managed artifacts, with UID/GID 10001. One replica and stop-first updates prevent competing SQLite writers. Updates do not replace plan data. Verify the recorded stack artifact and runtime through HiveForge MCP, then check `/health` and read-only/admin behavior through the published application address.
 
 The current 0.5 project execution contract does not provide the Docker-single lifecycle required by this project, so no pretend Docker-single profile is declared. For a standalone Docker/Portainer host, use the root `compose.yaml`.
-
-## Naming and existing deployments
-
-New registrations use `projectId: pocketplanner`, the PocketPlanner repository, `ghcr.io/sepa79/pocketplanner`, `POCKETPLANNER_*` variables, and `state/pocketplanner`. The old variable names are not aliases. This patch release does not rename or redeploy the existing lab installation, change its mount, or copy its database. Do not apply the new project identity to an old deployment as a normal in-place update: its identity/storage migration needs separate human approval and must preserve the original durable mount. For standalone/Portainer updates, keep the existing stack/project name and volume and stop the old service before starting the corrected service.
-
-## Verified lab baseline
-
-The following historical baseline used the original misspelled identifiers. It is not evidence of deployment under the corrected project name.
-
-On 13 October 2026, HiveForge 0.5.9 on `192.168.88.50` deployed and updated the published application through its Portainer-stack executor. A single healthy replica ran on `docker-swarm-mgr-1`; the durable mount stayed at `/mnt/shared_nfs/hiveforge/data/deployed/pockerplanner/state/pockerplanner`. Website navigation, health and view-only access were verified without importing operational data. Authenticated writes and persistence of a nonempty plan were not verified in that lab.
-
-The HiveForge instance on `192.168.88.54` provides Docker-single, not the required Swarm/placement capabilities. It was inspected but this profile was not deployed there. The lab baseline predates the built-in MCP change; do not present it as MCP deployment evidence.

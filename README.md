@@ -2,7 +2,7 @@
 
 ![PocketPlanner · simple test plan](web/pocketplanner-logo.svg)
 
-A compact calendar test planner with separate plans, descriptions, editable streams and activities, shared blockers, plain Jira links, and JSON import/export. The interface uses the PocketHive Press Set palette. Concurrency is expressed by task placement on the timeline.
+A compact calendar test planner with separate plans, descriptions, editable streams and activities, shared blockers, plain Jira links, and JSON import/export. The interface uses the PocketHive Press Set palette.
 
 **For operators:** [Portainer](#portainer) · [HiveForge deployment playbook](docs/HIVEFORGE.md)
 
@@ -10,19 +10,9 @@ A compact calendar test planner with separate plans, descriptions, editable stre
 
 Python 3.12, SQLite, Starlette/Uvicorn, the official MCP Python SDK, and plain JavaScript. One container, one application replica, no Jira-sized workflow engine.
 
-## Release v0.1.1
-
-Version 0.1.1 corrects the technical naming to PocketPlanner/pocketplanner in the repository, image, configuration, browser modules and JSON export filename. It retains multi-plan Gantt scheduling, collapsible streams, weekday scheduling with per-activity weekend opt-in, progress editing, scoped blockers and issue history, JSON import/export, PocketHive access checks, and built-in MCP for agents. Deployment and agent instructions are linked above.
-
-Use Git ref `v0.1.1` and image `ghcr.io/sepa79/pocketplanner:v0.1.1` for this release. The root Compose file pins that version; `latest` tracks subsequent published builds. HiveForge operators should select the release ref and pin its published image digest explicitly. Publication does not update existing deployments or their data.
-
-The published `v0.1.0` tag and old image remain unchanged as historical artifacts. This naming correction does not change the workspace schema or plan/stream/activity IDs. MCP/HiveForge configuration now uses `POCKETPLANNER_*`; update your explicitly configured variable names, with no legacy-name fallback. Keep the original stack/project name and `planner_data` volume when updating an existing standalone installation. Stop the old service before starting the corrected one; never remove its volume or run competing database writers. Existing HiveForge deployments require a separately approved migration; see [the deployment notes](docs/HIVEFORGE.md#naming-and-existing-deployments).
-
-This release targets a trusted development/lab environment. PocketHive DEV login is not production authentication. The previous container scan still reported Debian package vulnerabilities without available distro fixes at scan time; package updates and removal of runtime pip do not mean the image is vulnerability-free. Jira/Rovo synchronization and PocketHive execution association are not implemented.
-
 ## Portainer
 
-The release image is `ghcr.io/sepa79/pocketplanner:v0.1.1`, built for amd64 and arm64 by GitHub Actions. Set the new GHCR package's visibility to Public once after its first publication; then it can be pulled without a registry login.
+The release image is `ghcr.io/sepa79/pocketplanner:v0.1.1`, built for amd64 and arm64 by GitHub Actions. It is public and can be pulled without a registry login.
 
 1. Open **Stacks → Add stack → Web editor**.
 2. Paste [compose.yaml](compose.yaml).
@@ -33,6 +23,8 @@ The release image is `ghcr.io/sepa79/pocketplanner:v0.1.1`, built for amd64 and 
 New installations start empty. The repository and application image contain no operational plan data. SQLite is stored in the `planner_data` Docker volume. Restarting or updating the container preserves it. Keep one application replica. A local Docker volume belongs to its host; if using Swarm, pin the service to the node that owns the volume or configure shared storage.
 
 The app provides public read-only views. PocketHive resolves every editing request; only an active `local-admin` identity may mutate or import. Without `POCKETHIVE_AUTH_BASE_URL`, the app remains read-only. The current login uses PocketHive's existing DEV login endpoint; no accounts or passwords are maintained by PocketPlanner.
+
+Use the application in a trusted development/lab environment; PocketHive DEV login is not production authentication. The container scan reported Debian package vulnerabilities without available distro fixes at scan time. Package updates and removal of runtime pip do not mean the image is vulnerability-free.
 
 ## Plans and JSON
 
