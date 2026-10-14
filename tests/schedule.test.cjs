@@ -6,7 +6,7 @@ const {runInNewContext} = require("node:vm");
 
 const browser = {window: {}};
 runInNewContext(readFileSync(join(__dirname, "../web/schedule.js"), "utf8"), browser);
-const schedule = browser.window.PockerSchedule;
+const schedule = browser.window.PocketSchedule;
 const plain = value => JSON.parse(JSON.stringify(value));
 const friday = {start: "2026-10-16", durationDays: 3};
 

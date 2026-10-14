@@ -6,7 +6,7 @@ const {runInNewContext} = require("node:vm");
 
 const browser = {window: {}};
 runInNewContext(readFileSync(join(__dirname, "../web/progress.js"), "utf8"), browser);
-const progress = browser.window.PockerProgress;
+const progress = browser.window.PocketProgress;
 
 test("empty streams have no progress rather than a fabricated percentage", () => {
   assert.equal(progress([]), null);

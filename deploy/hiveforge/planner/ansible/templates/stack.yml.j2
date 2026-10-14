@@ -1,11 +1,11 @@
 version: "3.8"
 services:
-  pockerplanner:
+  pocketplanner:
     image: {{ planner_image | to_json }}
     environment:
       POCKETHIVE_AUTH_BASE_URL: {{ planner_auth_base | to_json }}
-      POCKERPLANNER_MCP_ALLOWED_HOSTS: {{ planner_mcp_hosts | to_json }}
-      POCKERPLANNER_MCP_ALLOWED_ORIGINS: {{ planner_mcp_origins | to_json }}
+      POCKETPLANNER_MCP_ALLOWED_HOSTS: {{ planner_mcp_hosts | to_json }}
+      POCKETPLANNER_MCP_ALLOWED_ORIGINS: {{ planner_mcp_origins | to_json }}
     ports:
       - target: 8765
         published: {{ planner_port | int }}
@@ -13,7 +13,7 @@ services:
         mode: ingress
     volumes:
       - type: bind
-        source: {{ (planner_bind_root + '/state/pockerplanner') | to_json }}
+        source: {{ (planner_bind_root + '/state/pocketplanner') | to_json }}
         target: /data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=3)"]

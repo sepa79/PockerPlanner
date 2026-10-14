@@ -1,6 +1,6 @@
 "use strict";
 
-window.PockerSchedule = (() => {
+window.PocketSchedule = (() => {
   function dateAt(value) { return new Date(`${value}T00:00:00Z`); }
   function addDays(value, days) {
     const date = dateAt(value);

@@ -4,7 +4,7 @@ async (page) => {
   const initial = await state();
   ensure(initial.plans.length === 0, "Run only against an isolated server with an empty test database");
   await page.setViewportSize({width: 1171, height: 1252});
-  await page.evaluate(() => window.PockerAuth.logout());
+  await page.evaluate(() => window.PocketAuth.logout());
   await page.reload();
   await page.locator("#auth-button").click();
   await page.locator("#auth-username").fill("local-admin");
@@ -18,7 +18,7 @@ async (page) => {
     plan.issues[0] = {...plan.issues[0], scope: "ALL", streamIds: [], blocker: true, descriptionIncomplete: true};
     plan.issues.push({...plan.issues[0], id: "scoped", title: "Stream-only issue", scope: "STREAMS", streamIds: ["demo"], descriptionIncomplete: false});
     plan.issues.push({...plan.issues[0], id: "note", title: "Closed note", blocker: false, open: false, descriptionIncomplete: false});
-    const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PockerAuth.headers()}, body: JSON.stringify(fixture)});
+    const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PocketAuth.headers()}, body: JSON.stringify(fixture)});
     if (!response.ok) throw new Error(await response.text());
   });
   await page.reload();

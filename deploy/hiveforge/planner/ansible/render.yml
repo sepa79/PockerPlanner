@@ -3,12 +3,12 @@
   ansible.builtin.set_fact:
     planner_profile: "{{ lookup('env', 'HIVEFORGE_PROFILE') }}"
     planner_bind_root: "{{ lookup('env', 'HIVEFORGE_BIND_SOURCE_DIR') }}"
-    planner_image: "{{ lookup('env', 'POCKERPLANNER_IMAGE') }}"
-    planner_port: "{{ lookup('env', 'POCKERPLANNER_PORT') }}"
-    planner_node: "{{ lookup('env', 'POCKERPLANNER_NODE') }}"
+    planner_image: "{{ lookup('env', 'POCKETPLANNER_IMAGE') }}"
+    planner_port: "{{ lookup('env', 'POCKETPLANNER_PORT') }}"
+    planner_node: "{{ lookup('env', 'POCKETPLANNER_NODE') }}"
     planner_auth_base: "{{ lookup('env', 'POCKETHIVE_AUTH_BASE_URL') }}"
-    planner_mcp_hosts: "{{ lookup('env', 'POCKERPLANNER_MCP_ALLOWED_HOSTS') }}"
-    planner_mcp_origins: "{{ lookup('env', 'POCKERPLANNER_MCP_ALLOWED_ORIGINS') }}"
+    planner_mcp_hosts: "{{ lookup('env', 'POCKETPLANNER_MCP_ALLOWED_HOSTS') }}"
+    planner_mcp_origins: "{{ lookup('env', 'POCKETPLANNER_MCP_ALLOWED_ORIGINS') }}"
 
 - name: Require supported profile and explicit configuration
   ansible.builtin.assert:
@@ -25,7 +25,7 @@
 
 - name: Create durable database directory
   ansible.builtin.file:
-    path: /hf/state/pockerplanner
+    path: /hf/state/pocketplanner
     state: directory
     owner: "10001"
     group: "10001"

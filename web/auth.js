@@ -1,6 +1,6 @@
 "use strict";
 
-window.PockerAuth = (() => {
+window.PocketAuth = (() => {
   const sessionKey = "PH_UI_V2_AUTH_SESSION";
   let session = null;
   let identity = {user: null, canEdit: false, configured: false};

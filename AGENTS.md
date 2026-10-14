@@ -1,4 +1,4 @@
-# PockerPlanner working rules
+# PocketPlanner working rules
 
 - Read the architecture and data contract before changing behavior.
 - Deployment agents must follow `docs/HIVEFORGE.md`; planner-update agents must follow `docs/MCP.md`.

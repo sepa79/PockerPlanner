@@ -5,7 +5,7 @@ async (page) => {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize({width: 1171, height: 1252});
-  await page.evaluate(() => window.PockerAuth.login("local-admin"));
+  await page.evaluate(() => window.PocketAuth.login("local-admin"));
   await page.evaluate(async () => {
     const fixture = await (await fetch("/example-plan.json")).json();
     const plan = fixture.plans[0];
@@ -15,10 +15,11 @@ async (page) => {
     delete activity.includeWeekends;
     plan.activities.push({...activity, id: "calendar", name: "Calendar activity", streamId: "continuous", includeWeekends: true});
     plan.activities.push({...activity, id: "weekend-start", name: "Weekend start", start: "2026-10-17", durationDays: 1});
-    const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PockerAuth.headers()}, body: JSON.stringify(fixture)});
+    const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PocketAuth.headers()}, body: JSON.stringify(fixture)});
     if (!response.ok) throw new Error(await response.text());
   });
   await page.reload();
+  await page.locator('.bar[data-id="example"]').first().waitFor({state: "visible"});
   const bars = id => page.locator(`.bar[data-id="${id}"]`);
   const ranges = locator => locator.evaluateAll(elements => elements.map(element => ({start: element.dataset.start, end: element.dataset.end, progress: parseFloat(element.querySelector(".bar-fill, .stream-summary-fill").style.width)})));
   const weekday = await ranges(bars("example"));

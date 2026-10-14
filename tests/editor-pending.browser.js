@@ -8,11 +8,11 @@ async (page) => {
   page.on("pageerror", error => errors.push(error.message));
   page.on("request", request => { if (request.method() === "PUT" && request.url().endsWith("/api/state")) writes.push(request.url()); });
   await page.setViewportSize({width: 1171, height: 1252});
-  await page.evaluate(() => window.PockerAuth.login("local-admin"));
+  await page.evaluate(() => window.PocketAuth.login("local-admin"));
   await page.evaluate(async () => {
     const fixture = await (await fetch("/example-plan.json")).json();
     fixture.plans[0].activities.push({...fixture.plans[0].activities[0], id: "second", name: "Second activity", status: "Original second description"});
-    const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PockerAuth.headers()}, body: JSON.stringify(fixture)});
+    const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PocketAuth.headers()}, body: JSON.stringify(fixture)});
     if (!response.ok) throw new Error(await response.text());
   });
   await page.reload();
@@ -106,7 +106,7 @@ async (page) => {
     const rejected = await page.evaluate(async () => {
       const current = await (await fetch("/api/state")).json();
       current.plans[0].activities[0].status += "x";
-      const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PockerAuth.headers()}, body: JSON.stringify(current)});
+      const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PocketAuth.headers()}, body: JSON.stringify(current)});
       return response.status;
     });
     ensure(rejected === 400 && JSON.stringify(await state()) === JSON.stringify(saved), "The server accepted a bypass of its 1,000-character boundary");
@@ -142,7 +142,7 @@ async (page) => {
     const competing = await page.evaluate(async () => {
       const current = await (await fetch("/api/state")).json();
       current.plans[0].activities[0].progress = 85;
-      const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PockerAuth.headers()}, body: JSON.stringify(current)});
+      const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PocketAuth.headers()}, body: JSON.stringify(current)});
       if (!response.ok) throw new Error(await response.text());
       return response.json();
     });

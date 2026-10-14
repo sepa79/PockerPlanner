@@ -1,10 +1,10 @@
 services:
-  pockerplanner:
-    image: ghcr.io/sepa79/pockerplanner:v0.1.0
+  pocketplanner:
+    image: ghcr.io/sepa79/pocketplanner:v0.1.1
     environment:
       POCKETHIVE_AUTH_BASE_URL: "${POCKETHIVE_AUTH_BASE_URL:-}"
-      POCKERPLANNER_MCP_ALLOWED_HOSTS: "${POCKERPLANNER_MCP_ALLOWED_HOSTS:-}"
-      POCKERPLANNER_MCP_ALLOWED_ORIGINS: "${POCKERPLANNER_MCP_ALLOWED_ORIGINS:-}"
+      POCKETPLANNER_MCP_ALLOWED_HOSTS: "${POCKETPLANNER_MCP_ALLOWED_HOSTS:-}"
+      POCKETPLANNER_MCP_ALLOWED_ORIGINS: "${POCKETPLANNER_MCP_ALLOWED_ORIGINS:-}"
     ports:
       - "8765:8765"
     volumes:

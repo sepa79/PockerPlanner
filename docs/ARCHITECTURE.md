@@ -40,7 +40,7 @@ The store owns a shared one-MiB document limit measured as compact UTF-8 JSON by
 
 ## Authentication
 
-`POCKETHIVE_AUTH_BASE_URL` explicitly selects the PocketHive auth service through its public ingress, including `/auth-service`. No protocol/provider fallback is used. Every authenticated mutation resolves the bearer token at `GET /api/auth/me`; active username `local-admin` is the editor policy. PockerPlanner has no user or password database and does not decode or trust unverified token claims.
+`POCKETHIVE_AUTH_BASE_URL` explicitly selects the PocketHive auth service through its public ingress, including `/auth-service`. No protocol/provider fallback is used. Every authenticated mutation resolves the bearer token at `GET /api/auth/me`; active username `local-admin` is the editor policy. PocketPlanner has no user or password database and does not decode or trust unverified token claims.
 
 Authentication requests never follow HTTP redirects, including same-origin redirects. An unexpected redirect fails closed with 503 before sending a bearer token or login body to a redirect target. Configure the canonical auth ingress directly, including the intended HTTP/HTTPS scheme and path.
 
@@ -54,7 +54,7 @@ The same process serves the existing HTTP API, website, and `/mcp` Streamable HT
 
 MCP reads follow the public view-only policy. Every mutating call resolves the bearer header through the same `require_editor` owner as HTTP writes. No token is accepted as a tool argument or persisted. Scoped commands require an integer `expected_revision`, read a plan by stable ID, compose only the specified edit, and save through `planner_store.write`; its transaction rejects a racing HTTP or MCP writer. Patchable fields belong to the command contract, while persisted-data validation stays in the store. IDs, collections, and `resolvedAt` cannot be patched. Create rejects existing IDs instead of silently upserting. No MCP deletion or bulk replacement tool is exposed.
 
-MCP uses a one-megabyte request limit. Host/Origin checks remain enabled with localhost defaults; remote addresses and browser origins require explicit `POCKERPLANNER_MCP_ALLOWED_HOSTS` and `POCKERPLANNER_MCP_ALLOWED_ORIGINS`. This is a trusted-environment bearer integration, not a new OAuth issuer or an unattended service-account system. TLS and a future Rovo credential/approval contract must be provided explicitly, not inferred.
+MCP uses a one-megabyte request limit. Host/Origin checks remain enabled with localhost defaults; remote addresses and browser origins require explicit `POCKETPLANNER_MCP_ALLOWED_HOSTS` and `POCKETPLANNER_MCP_ALLOWED_ORIGINS`. This is a trusted-environment bearer integration, not a new OAuth issuer or an unattended service-account system. TLS and a future Rovo credential/approval contract must be provided explicitly, not inferred.
 
 The viewport contains bounded Plan, Issues, Streams, Types, Data, and Plans panels. Calendar windows are 7/14/21/28 days with explicit navigation. Plan selection and calendar placement communicate timing. There is no resource scheduling engine.
 
@@ -72,7 +72,7 @@ Blocked stream rows pulse red. When all streams of the active plan are blocked, 
 
 The PocketHive Press Set uses ink `#080b16`, panel `#111626`, paper `#f7f8ff`, honey `#ffc107`, cyan `#36dfff`, violet `#b49aff`, muted `#a8b2c8`, and Arial typography. Authored type colors remain editable data.
 
-The PocketPlanner wordmark uses the same typography declaration as the PocketHive and HiveForge source logos: Inter, Segoe UI, Arial, sans-serif; weight 800 at 76px for the name and weight 500 at 26px for the subtitle. The approved `simple test plan` subtitle spans the full name width. `web/pocketplanner-logo.svg` is the header and large-logo asset; `web/pocketplanner-mark.svg` is the favicon. Repository, image, deployment, and internal API identifiers remain named PockerPlanner.
+The PocketPlanner wordmark uses the same typography declaration as the PocketHive and HiveForge source logos: Inter, Segoe UI, Arial, sans-serif; weight 800 at 76px for the name and weight 500 at 26px for the subtitle. The approved `simple test plan` subtitle spans the full name width. `web/pocketplanner-logo.svg` is the header and large-logo asset; `web/pocketplanner-mark.svg` is the favicon. Repository, image, deployment configuration and browser modules use the PocketPlanner/pocketplanner spelling; configuration uses `POCKETPLANNER_*`. The naming correction does not change the persisted schema, stable item IDs, SQLite filename or local `planner_data` volume. Published historical tags and existing HiveForge mounts are not rewritten or silently migrated.
 
 SQLite has one workspace writer and survives container updates through mounted storage. Deploy one replica. HiveForge renders a Swarm stack and owns its execution; durable state lives outside replace-managed artifacts. Plans keep stable IDs to support a future, separately contracted PocketHive execution integration.
 

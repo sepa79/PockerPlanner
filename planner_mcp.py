@@ -31,8 +31,8 @@ def _call(context, function, *arguments, editor=False):
 def transport_security():
     hosts = ["localhost", "localhost:*", "127.0.0.1", "127.0.0.1:*", "[::1]", "[::1]:*"]
     origins = ["http://localhost:*", "http://127.0.0.1:*", "http://[::1]:*"]
-    hosts.extend(value.strip() for value in os.environ.get("POCKERPLANNER_MCP_ALLOWED_HOSTS", "").split(",") if value.strip())
-    origins.extend(value.strip() for value in os.environ.get("POCKERPLANNER_MCP_ALLOWED_ORIGINS", "").split(",") if value.strip())
+    hosts.extend(value.strip() for value in os.environ.get("POCKETPLANNER_MCP_ALLOWED_HOSTS", "").split(",") if value.strip())
+    origins.extend(value.strip() for value in os.environ.get("POCKETPLANNER_MCP_ALLOWED_ORIGINS", "").split(",") if value.strip())
     if "*" in hosts or "*" in origins:
         raise ValueError("MCP host and origin allowlists cannot contain an unrestricted wildcard")
     return TransportSecuritySettings(allowed_hosts=hosts, allowed_origins=origins)

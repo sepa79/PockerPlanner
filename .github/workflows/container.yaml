@@ -40,7 +40,7 @@ jobs:
       - name: Select image tags
         id: image
         env:
-          IMAGE: ghcr.io/sepa79/pockerplanner
+          IMAGE: ghcr.io/sepa79/pocketplanner
         run: |
           tags=("${IMAGE}:latest" "${IMAGE}:sha-${GITHUB_SHA}")
           version="${GITHUB_SHA}"
@@ -66,6 +66,6 @@ jobs:
           tags: ${{ steps.image.outputs.tags }}
           labels: |
             org.opencontainers.image.title=PocketPlanner
-            org.opencontainers.image.source=https://github.com/sepa79/PockerPlanner
+            org.opencontainers.image.source=https://github.com/sepa79/PocketPlanner
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.image.outputs.version }}

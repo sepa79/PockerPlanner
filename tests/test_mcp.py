@@ -173,11 +173,11 @@ class McpTests(unittest.TestCase):
         self.assertEqual(self.rpc("tools/list", headers={"Origin": "https://evil.example"}).status_code, 403)
         self.assertEqual(self.client.post("/mcp", headers=self.headers, content=b"x" * (1024 * 1024 + 1)).status_code, 413)
         self.assertEqual(self.client.post("/mcp", headers=self.headers, content="not-json").status_code, 400)
-        with patch.dict(os.environ, {"POCKERPLANNER_MCP_ALLOWED_HOSTS": "planner.example.com:8765", "POCKERPLANNER_MCP_ALLOWED_ORIGINS": "https://trusted.example.com"}):
+        with patch.dict(os.environ, {"POCKETPLANNER_MCP_ALLOWED_HOSTS": "planner.example.com:8765", "POCKETPLANNER_MCP_ALLOWED_ORIGINS": "https://trusted.example.com"}):
             with TestClient(create_app(), base_url="http://planner.example.com:8765") as remote:
                 response = remote.post("/mcp", headers={**self.headers, "Origin": "https://trusted.example.com"}, json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
                 self.assertEqual(response.status_code, 200, response.text)
-        with patch.dict(os.environ, {"POCKERPLANNER_MCP_ALLOWED_HOSTS": "*"}):
+        with patch.dict(os.environ, {"POCKETPLANNER_MCP_ALLOWED_HOSTS": "*"}):
             with self.assertRaises(ValueError):
                 create_app()
 

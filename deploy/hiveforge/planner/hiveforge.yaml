@@ -1,7 +1,7 @@
 kind: component
 component:
   name: planner
-  project: pockerplanner
+  project: pocketplanner
 deployment:
   adapter: ansible
   actions:
@@ -11,6 +11,6 @@ deployment:
       playbook: ansible/update.yml
 requirements:
   environment:
-    - POCKERPLANNER_IMAGE
-    - POCKERPLANNER_PORT
-    - POCKERPLANNER_NODE
+    - POCKETPLANNER_IMAGE
+    - POCKETPLANNER_PORT
+    - POCKETPLANNER_NODE

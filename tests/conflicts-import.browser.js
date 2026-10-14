@@ -7,7 +7,7 @@ async (page) => {
   page.on("pageerror", error => errors.push(error.message));
   page.on("request", request => { if (request.method() === "PUT" && request.url().endsWith("/api/state")) writes.push(request.url()); });
   await page.setViewportSize({width: 1171, height: 1252});
-  await page.evaluate(() => window.PockerAuth.login("local-admin"));
+  await page.evaluate(() => window.PocketAuth.login("local-admin"));
   await page.evaluate(async () => {
     const fixture = await (await fetch("/example-plan.json")).json();
     fixture.plans[0].activities[0].start = "2026-10-16";
@@ -18,7 +18,7 @@ async (page) => {
     other.activities[0].status = "Preserve the other plan";
     other.activities[0].progress = 20;
     fixture.plans.push(other);
-    const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PockerAuth.headers()}, body: JSON.stringify(fixture)});
+    const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PocketAuth.headers()}, body: JSON.stringify(fixture)});
     if (!response.ok) throw new Error(await response.text());
   });
   await page.reload();
@@ -31,7 +31,7 @@ async (page) => {
     if (operation === "close") plan.issues[0].open = false;
     if (operation === "reschedule") plan.activities[0].start = "2026-10-19";
     if (operation === "remove-plan") current.plans = current.plans.filter(plan => plan.id !== "example-plan");
-    const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PockerAuth.headers()}, body: JSON.stringify(current)});
+    const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PocketAuth.headers()}, body: JSON.stringify(current)});
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }, operation);
@@ -116,7 +116,7 @@ async (page) => {
     document.plans.push({id: "padding", name: "Synthetic padding", description: "", streams: [], activityTypes: [], activities: [], issues: []});
     const bytes = new TextEncoder().encode(JSON.stringify(document)).length;
     document.plans.at(-1).description = "x".repeat(1024 * 1024 - bytes - 200);
-    const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PockerAuth.headers()}, body: JSON.stringify(document)});
+    const response = await fetch("/api/state", {method: "PUT", headers: {"Content-Type": "application/json", ...window.PocketAuth.headers()}, body: JSON.stringify(document)});
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   });
@@ -128,12 +128,12 @@ async (page) => {
   });
   const download = page.waitForEvent("download");
   await page.locator("#export-json").click();
-  ensure((await download).suggestedFilename() === "pockerplanner-plan.json", "The export did not download the expected JSON file");
+  ensure((await download).suggestedFilename() === "pocketplanner-plan.json", "The export did not download the expected JSON file");
   const exported = await page.evaluate(async () => {
     const text = await window.qaExportBlob.text();
     const document = JSON.parse(text);
     const transfer = new DataTransfer();
-    transfer.items.add(new File([window.qaExportBlob], "pockerplanner-plan.json", {type: "application/json"}));
+    transfer.items.add(new File([window.qaExportBlob], "pocketplanner-plan.json", {type: "application/json"}));
     window.document.getElementById("import-file").files = transfer.files;
     return {bytes: window.qaExportBlob.size, compact: text === JSON.stringify(document), revision: document.revision, samePlans: JSON.stringify(document.plans) === JSON.stringify(workspace.plans)};
   });

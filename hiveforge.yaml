@@ -1,11 +1,11 @@
 kind: project
 version: "0.5"
 project:
-  name: pockerplanner
-  repository: https://github.com/sepa79/PockerPlanner.git
+  name: pocketplanner
+  repository: https://github.com/sepa79/PocketPlanner.git
   actions: [deploy, update]
   vars:
-    imageRepository.project: ghcr.io/sepa79/pockerplanner
+    imageRepository.project: ghcr.io/sepa79/pocketplanner
   profiles:
     - id: swarm
       runtime: docker-swarm
