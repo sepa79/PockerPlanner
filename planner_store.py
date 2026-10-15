@@ -299,7 +299,7 @@ def write(document, execution_actions=None):
             return timestamp
 
         try:
-            saved = record_execution(_record_resolutions(document, current), current, execution_actions or {}, execution_timestamp)
+            saved = record_execution(_record_resolutions(document, current), current, execution_actions or {}, execution_timestamp, _timestamp)
         except ValueError as error:
             raise InvalidState(str(error)) from None
         saved["revision"] = current["revision"] + 1

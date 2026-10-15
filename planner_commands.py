@@ -10,7 +10,7 @@ Collection = Literal["streams", "activityTypes", "activities", "issues"]
 EDITABLE_FIELDS = {
     "streams": {"name", "description", "dependsOn"},
     "activityTypes": {"name", "color"},
-    "activities": {"name", "streamId", "typeId", "start", "durationDays", "includeWeekends", "progress", "status", "issueIds", "dependsOn", "jiraUrl", "started", "done"},
+    "activities": {"name", "streamId", "typeId", "start", "durationDays", "includeWeekends", "progress", "status", "issueIds", "dependsOn", "jiraUrl", "started", "done", "startedAt", "completedAt"},
     "issues": {"title", "description", "scope", "streamIds", "activityIds", "blocker", "discovered", "open", "descriptionIncomplete", "jiraUrl"},
 }
 
@@ -39,8 +39,8 @@ def _fields(changes, allowed):
 def _actions(collection, item):
     if collection != "activities":
         return {}
-    actions = {key: item.pop(key) for key in ("started", "done") if key in item}
-    if any(type(value) is not bool for value in actions.values()):
+    actions = {key: item.pop(key) for key in ("started", "done", "startedAt", "completedAt") if key in item}
+    if any(type(actions[key]) is not bool for key in ("started", "done") if key in actions):
         raise InvalidState("Started and Done actions must be booleans")
     return actions
 

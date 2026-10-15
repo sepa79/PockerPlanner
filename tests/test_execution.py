@@ -93,7 +93,7 @@ class ExecutionTests(unittest.TestCase):
     def test_scoped_and_raw_changes_cannot_rewrite_server_owned_facts(self):
         self.edit({"started": True})
         before = deepcopy(self.saved)
-        for changes in ({"startedAt": "2026-10-12T10:00:00Z"}, {"started": "yes"}, {"done": True}):
+        for changes in ({"blockerTrackingSince": "2026-10-12T10:00:00Z"}, {"blockerIntervals": []}, {"started": "yes"}, {"done": True}):
             with self.assertRaises(planner_store.InvalidState):
                 self.edit(changes)
             self.assertEqual(planner_store.read(), before)
@@ -105,6 +105,73 @@ class ExecutionTests(unittest.TestCase):
         with self.assertRaises(planner_store.RevisionConflict):
             planner_commands.update_plan_item("example-plan", "activities", "example", {"done": True, "progress": 100}, 0)
         self.assertEqual(planner_store.read(), before)
+
+    def test_start_can_be_corrected_without_inventing_earlier_blocking(self):
+        self.edit({"blocker": True}, collection="issues", item_id="example-issue")
+        original = self.edit({"started": True})
+        item = self.edit({"startedAt": "2026-10-12T09:00:00Z"}, "2026-10-15T10:00:00Z")
+        self.assertEqual(item["startedAt"], "2026-10-12T09:00:00Z")
+        self.assertEqual(item["blockerTrackingSince"], original["blockerTrackingSince"])
+        self.assertEqual(item["blockerIntervals"], original["blockerIntervals"])
+
+    def test_later_start_correction_clips_observed_blocking(self):
+        self.edit({"blocker": True}, collection="issues", item_id="example-issue")
+        self.edit({"started": True})
+        item = self.edit({"startedAt": "2026-10-14T12:00:00Z"}, "2026-10-15T10:00:00Z")
+        self.assertEqual(item["blockerTrackingSince"], item["startedAt"])
+        self.assertEqual(item["blockerIntervals"][0]["startedAt"], item["startedAt"])
+
+    def test_completion_can_be_corrected_and_clips_blocking(self):
+        self.edit({"blocker": True}, collection="issues", item_id="example-issue")
+        self.edit({"started": True})
+        self.edit({"done": True, "progress": 100}, "2026-10-15T10:00:00Z")
+        item = self.edit({"completedAt": "2026-10-14T12:00:00Z"}, "2026-10-15T12:00:00Z")
+        self.assertEqual(item["completedAt"], "2026-10-14T12:00:00Z")
+        self.assertEqual(item["blockerIntervals"][0]["endedAt"], item["completedAt"])
+
+    def test_corrected_period_before_tracking_has_no_invented_blocking(self):
+        self.edit({"blocker": True}, collection="issues", item_id="example-issue")
+        self.edit({"started": True})
+        self.edit({"done": True, "progress": 100}, "2026-10-15T10:00:00Z")
+        item = self.edit({"startedAt": "2026-10-12T09:00:00Z", "completedAt": "2026-10-13T09:00:00Z"}, "2026-10-15T12:00:00Z")
+        self.assertNotIn("blockerTrackingSince", item)
+        self.assertNotIn("blockerIntervals", item)
+
+    def test_undo_done_requires_explicit_progress_and_preserves_start(self):
+        self.edit({"started": True})
+        completed = self.edit({"done": True, "progress": 100}, "2026-10-15T10:00:00Z")
+        before = deepcopy(self.saved)
+        with self.assertRaisesRegex(planner_store.InvalidState, "progress below 100"):
+            self.edit({"done": False}, "2026-10-15T11:00:00Z")
+        self.assertEqual(planner_store.read(), before)
+        item = self.edit({"done": False, "progress": 40}, "2026-10-15T12:00:00Z")
+        self.assertEqual(item["startedAt"], completed["startedAt"])
+        self.assertEqual(item["progress"], 40)
+        self.assertNotIn("completedAt", item)
+
+    def test_undo_started_resets_execution_but_preserves_the_plan(self):
+        self.edit({"blocker": True}, collection="issues", item_id="example-issue")
+        self.edit({"started": True})
+        original = self.edit({"done": True, "progress": 100}, "2026-10-15T10:00:00Z")
+        item = self.edit({"started": False}, "2026-10-15T12:00:00Z")
+        self.assertEqual(item["progress"], 0)
+        for field in ("startedAt", "completedAt", "blockerTrackingSince", "blockerIntervals"):
+            self.assertNotIn(field, item)
+        for field in ("start", "durationDays", "issueIds", "status"):
+            self.assertEqual(item[field], original[field])
+        restarted = self.edit({"started": True}, "2026-10-16T10:00:00Z")
+        self.assertEqual(restarted["startedAt"], "2026-10-16T10:00:00Z")
+        self.assertEqual(len(restarted["blockerIntervals"]), 1)
+
+    def test_date_corrections_reject_invalid_future_and_contradictory_actions(self):
+        self.edit({"started": True})
+        self.edit({"done": True, "progress": 100}, "2026-10-15T10:00:00Z")
+        before = deepcopy(self.saved)
+        for changes in ({"startedAt": None}, {"startedAt": "2026-10-13"}, {"completedAt": "2026-10-16T10:00:00Z"}, {"completedAt": "2026-10-13T10:00:00Z"}, {"startedAt": "2026-10-15T11:00:00Z"}, {"started": False, "done": True}, {"started": False, "startedAt": "2026-10-13T10:00:00Z"}):
+            with self.subTest(changes=changes):
+                with self.assertRaises(planner_store.InvalidState):
+                    self.edit(changes, "2026-10-15T12:00:00Z")
+                self.assertEqual(planner_store.read(), before)
 
     def test_new_imported_records_preserve_supplied_facts_without_inventing_dates(self):
         document = deepcopy(self.saved)

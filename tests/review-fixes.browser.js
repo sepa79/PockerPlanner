@@ -47,7 +47,7 @@ async (page) => {
   await page.locator('.activity-name[data-id="early"]').click();
   ensure(await page.locator("#field-start").inputValue() === "2026-10-30", "Forecast rewrote the authored estimate date");
   ensure((await page.locator("#activity-timing").innerText()).includes("Projected 15 Oct"), "Activity details use the wrong forecast");
-  ensure(await page.locator("#activity-started").isDisabled(), "Recorded Started became editable");
+  ensure(!await page.locator("#activity-started").isDisabled(), "Recorded Started cannot be corrected or undone");
   await page.setViewportSize({width: 390, height: 844});
   ensure(await page.locator("#editor").evaluate(element => element.scrollWidth <= element.clientWidth), "Regression editor overflows on mobile");
   await page.screenshot({path: "/tmp/pocketplanner-review-fixes-mobile.png"});

@@ -14,7 +14,7 @@ Python 3.12, SQLite, Starlette/Uvicorn, the official MCP Python SDK, and plain J
 
 ## Portainer
 
-The release image is `ghcr.io/sepa79/pocketplanner:v0.2.1`, built for amd64 and arm64 by GitHub Actions. It is public and can be pulled without a registry login.
+The release image is `ghcr.io/sepa79/pocketplanner:v0.2.2`, built for amd64 and arm64 by GitHub Actions. It is public and can be pulled without a registry login.
 
 1. Open **Stacks → Add stack → Web editor**.
 2. Paste [compose.yaml](compose.yaml).
@@ -50,7 +50,7 @@ Click outside an editor or sign-in dialog to close it. Unsaved editor changes ar
 
 Click activities to view details; local-admin can edit them and drag their bars. Durations are full planned **working days** by default, never remaining time. Saturday/Sunday stay visible as grey sections inside one continuous task frame. Tick **Include weekends** inside an activity to count all calendar days instead. For example, three days starting Friday occupy Friday, Monday and Tuesday; with the checkbox enabled they occupy Friday, Saturday and Sunday. A weekday-only weekend start begins work on Monday, and dropping its bar on a weekend snaps forward to Monday. End dates and overdue indicators follow that same rule. Existing saved starts, durations and progress are not rewritten. Activities without a recorded actual start have dashed outlines. The cyan line marks today.
 
-Activity details have **Started → progress slider / numeric stepper → Done** in one row. Started and Done are staged until **Save**; **Cancel** discards them. The server records actual start/completion times. Details separately show full estimate, projected finish, actual elapsed calendar time and recorded blocker time (included in elapsed time, never added twice). Approximate remaining effort uses the percentage done. Controls remain disabled for viewers. The duration field has **− / value / +** controls for quick one-day edits; typing and keyboard stepping still work within 1–365. **Blocker delay** reports estimated calendar-day finish slip versus the same forecast without blockers, including dependency effects. It stays separate from measured blocking time; completed work has no remaining-work delay forecast.
+Activity details have **Started → progress slider / numeric stepper → Done** in one row. Both buttons toggle: active states expose editable **Actual start / Actual finish** dates and times in your local timezone. Click **Done** again to undo completion and enter the correct percentage below 100%; the start stays unchanged. Click **Started** again to reset progress to zero, both actual dates and recorded blocker history. Everything is staged until **Save**; **Cancel** discards it. Automatic dates use server time on Save; explicit corrections cannot be in the future or put completion before start. Correcting dates clips observed blocker history to that actual period without inventing earlier blocking. Details separately show full estimate, projected finish, actual elapsed calendar time and recorded blocker time (included in elapsed time, never added twice). Approximate remaining effort uses the percentage done. Controls remain disabled for viewers. The duration field has **− / value / +** controls for quick one-day edits; typing and keyboard stepping still work within 1–365. **Blocker delay** reports estimated calendar-day finish slip versus the same forecast without blockers, including dependency effects. It stays separate from measured blocking time; completed work has no remaining-work delay forecast.
 
 **What if?** is read-only: select an active blocker and its assumed end date using the calendar or **−1 day / +1 day** buttons. There is one timeline and one frame per task. Only the selected blocker's end changes, from today to your chosen date; work resumes on the next eligible day. In-progress tasks keep their start and extend using estimated remaining effort: full duration × (100% − done), rounded up to scheduled days. Dependants move afterwards; completed and unrelated tasks stay fixed. Nothing is saved. Set an optional **Deadline** in Plan details to compare the forecast finish with the target.
 
@@ -124,10 +124,12 @@ node --check web/progress.js
 node --check web/schedule.js
 node --check web/live.js
 node --check web/whatif.js
+node --check web/execution.js
 node --check tests/progress-editor.browser.js
 node --check tests/activity-duration.browser.js
 node --check tests/review-fixes.browser.js
 node --check tests/completed-progress.browser.js
+node --check tests/execution-editor.browser.js
 node --check tests/issue-editor.browser.js
 node --check tests/weekends.browser.js
 node --check tests/conflicts-import.browser.js
@@ -146,6 +148,10 @@ The MCP tests exercise real SDK protocol handling, tool discovery, scoped edits,
 `tests/live-whatif.browser.js` verifies two independent sessions, UI/MCP notifications, draft/view preservation, stale saves, offline/reconnect, deadline editing, calendar/±1 day controls and percentage-based read-only projections on desktop/mobile. Python and calendar tests cover committed notifications, recovery, capacity, deadline persistence, revision races and calendar propagation. `tests/test_execution.py` covers factual start/completion, reopening, blocker-scope changes, retained history, timestamp protection, chronology and atomic size-limit rollback.
 
 `tests/completed-progress.browser.js` uses intercepted synthetic state in a separate browser context, with no imports or writes. It checks collapsed progress before/after recorded Done, actual spans, pauses, idle gaps, weekend opt-in, calendar clipping and desktop/mobile layout. Calendar tests cover the same union-of-work calculation, overlaps and long actual histories without expanding elapsed days.
+
+Repeated local times, when clocks go back, show a **time occurrence** selector under the actual date. Corrections on the same date retain the recorded UTC offset where valid; newly entered ambiguous dates require an explicit earlier/later choice. Ordinary dates show no extra selector.
+
+`tests/execution.test.cjs` checks repeated-hour UTC chronology/corrections, explicit occurrence choices, half-hour clock changes, shared automatic save times, mixed manual/automatic dates and invalid corrections. `tests/execution-editor.browser.js` uses an empty isolated database and the Europe/London browser timezone to verify those date regressions through Save, editable actual dates, reversible Started/Done, explicit progress after undo, observed-blocking coverage, dependency projections, invalid/future dates, Save/Cancel, reload, pending-write locks and viewer/mobile behavior.
 
 `tests/progress-editor.browser.js` is a Playwright browser regression function for an isolated server with an empty temporary database and working PocketHive auth. Navigate the test browser to that server before invoking it with the page. It refuses to run against a workspace with existing plans. It checks progress editing, validation, persistence after reload, view-only controls, named collapsed bars, and mobile layout.
 

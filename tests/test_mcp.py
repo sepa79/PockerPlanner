@@ -214,6 +214,29 @@ class McpTests(unittest.TestCase):
             retargeted = update("issues", "example-issue", {"activityIds": ["next-task"]})["structuredContent"]
             self.assertEqual(retargeted["plan"]["issues"][0]["activityIds"], ["next-task"])
 
+    def test_actual_dates_and_reversible_execution_use_the_same_owner(self):
+        planner_store.write(self.example)
+        with patch("pockethive_auth._request", side_effect=self.identity), patch("planner_store._resolution_timestamp", return_value="2026-10-15T10:00:00Z"):
+            def update(changes, token="admin-token", revision=None):
+                return self.call("update_plan_item", {"plan_id": "example-plan", "collection": "activities", "item_id": "example", "changes": changes, "expected_revision": planner_store.read()["revision"] if revision is None else revision}, token)
+
+            self.assert_failure(update({"startedAt": "2026-10-12T10:00:00Z"}, "viewer-token"), "AUTH_403")
+            started = update({"started": True, "startedAt": "2026-10-12T10:00:00Z"})["structuredContent"]
+            self.assertEqual(started["plan"]["activities"][0]["startedAt"], "2026-10-12T10:00:00Z")
+            update({"done": True, "progress": 100, "completedAt": "2026-10-14T10:00:00Z"})
+            before = planner_store.read()
+            self.assert_failure(update({"done": False}), "INVALID_INPUT")
+            self.assert_failure(update({"completedAt": "2026-10-11T10:00:00Z"}), "INVALID_INPUT")
+            self.assert_failure(update({"startedAt": "2026-10-11T10:00:00Z"}, revision=started["revision"]), "REVISION_CONFLICT")
+            self.assertEqual(planner_store.read(), before)
+            undone = update({"done": False, "progress": 40})["structuredContent"]["plan"]["activities"][0]
+            self.assertEqual(undone["progress"], 40)
+            self.assertNotIn("completedAt", undone)
+            self.assertIn("startedAt", undone)
+            reset = update({"started": False})["structuredContent"]["plan"]["activities"][0]
+            self.assertEqual(reset["progress"], 0)
+            self.assertNotIn("startedAt", reset)
+
     def test_scoped_edits_cannot_bypass_workspace_validation_or_size(self):
         planner_store.write(self.example)
         before = planner_store.read()

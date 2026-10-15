@@ -77,7 +77,7 @@ async (page) => {
   await page.reload();
   await page.locator(".activity-name").first().click();
   ensure(await number.inputValue() === "100" && await slider.inputValue() === "100", "Saved progress did not survive reload");
-  ensure(await started.isDisabled(), "A recorded actual start can be overwritten");
+  ensure(!await started.isDisabled(), "A recorded actual start cannot be corrected or undone");
   ensure((await page.locator("#activity-timing").innerText()).includes("calendar days"), "Actual time is missing");
   ensure((await page.locator("#activity-blocker-delay").innerText()).includes("Not projected"), "Completed work must not claim zero historical blocker delay from a fixed forecast");
   await number.fill("37");

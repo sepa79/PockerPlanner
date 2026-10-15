@@ -23,7 +23,7 @@ from pockethive_auth import AuthError, access, login, require_editor
 
 WEB = Path(__file__).resolve().parent / "web"
 STATIC = {"/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"), "/auth.js": ("auth.js", "text/javascript"), "/progress.js": ("progress.js", "text/javascript"), "/schedule.js": ("schedule.js", "text/javascript"), "/style.css": ("style.css", "text/css"), "/brand.css": ("brand.css", "text/css"), "/pocketplanner-logo.svg": ("pocketplanner-logo.svg", "image/svg+xml"), "/pocketplanner-topbar.svg": ("pocketplanner-topbar.svg", "image/svg+xml"), "/pocketplanner-mark.svg": ("pocketplanner-mark.svg", "image/svg+xml"), "/example-plan.json": ("example-plan.json", "application/json")}
-STATIC.update({"/live.js": ("live.js", "text/javascript"), "/whatif.js": ("whatif.js", "text/javascript")})
+STATIC.update({"/live.js": ("live.js", "text/javascript"), "/whatif.js": ("whatif.js", "text/javascript"), "/execution.js": ("execution.js", "text/javascript")})
 MAX_BODY_BYTES = MAX_DOCUMENT_BYTES
 
 

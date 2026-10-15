@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.2.2 - 2026-10-15
+
+### Changed
+- Make Started and Done reversible, with editable local actual dates and Save/Cancel semantics. Undoing Done requires an explicitly entered progress below 100%; undoing Started resets progress and execution facts. Date corrections preserve observed blocking only within the corrected actual period, without inventing earlier history.
+
+### Fixed
+- Preserve the recorded occurrence when correcting repeated local times; show an earlier/later UTC-offset selector only for ambiguous manual dates, require a choice for new ambiguous dates, and use the same resolved instant for validation, preview and Save.
+- Validate actual dates by their original UTC instants across repeated daylight-saving hours, without blocking unrelated edits or rewriting unchanged timestamps.
+- Allow Done followed by Started before Save: automatic dates share one prospective save time instead of comparing click times, while explicit invalid date corrections remain rejected.
+
 ## 0.2.1 - 2026-10-14
 
 ### Documentation

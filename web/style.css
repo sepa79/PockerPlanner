@@ -201,7 +201,9 @@ dialog form { padding: 20px; }
 .progress-controls { display: grid; grid-template-columns: auto minmax(0, 1fr) 68px auto; align-items: center; gap: 8px; }
 .progress-controls input[type=hidden] { display: none; }
 .progress-controls .button { padding: 9px 10px; }
-#activity-started[aria-pressed=true] { color: var(--honey); border-color: var(--honey); }
+#activity-started[aria-pressed=true], #progress-done[aria-pressed=true] { color: var(--honey); border-color: var(--honey); }
+.execution-dates .field[hidden] { display: none; }
+.execution-dates input { min-width: 0; }
 .activity-timing { display: grid; gap: 5px; padding: 10px; margin: 0 0 12px; background: #ffffff04; border: 1px solid var(--border); border-radius: 5px; font-size: 12px; color: var(--muted); }
 .activity-timing strong { color: var(--paper); }
 .activity-timing .form-hint { margin: 0; }
@@ -266,7 +268,8 @@ input[type=checkbox] { accent-color: var(--honey); }
   .issue-labels { width: 83px; }
   #blocked-title { letter-spacing: -2px; -webkit-text-stroke-width: 2px; }
   .form-grid { gap: 0 8px; }
-  .progress-controls { grid-template-columns: auto minmax(0, 1fr) 54px auto; gap: 5px; }
+  .execution-dates { grid-template-columns: 1fr; }
+  .progress-controls { grid-template-columns: auto minmax(0, 1fr) 64px auto; gap: 5px; }
   .progress-controls .button { padding: 9px 6px; font-size: 12px; }
   dialog form { padding: 16px; }
 }

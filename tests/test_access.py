@@ -126,6 +126,33 @@ class AccessTests(unittest.TestCase):
             self.assertTrue(saved["plans"][0]["activities"][0]["completedAt"].endswith("Z"))
         self.assertEqual(planner_store.read(), saved)
 
+    def test_execution_corrections_and_reset_share_auth_and_revision_checks(self):
+        with patch("pockethive_auth._request", side_effect=self.identity), patch("planner_store._resolution_timestamp", return_value="2026-10-15T10:00:00Z"):
+            planner_store.write(self.example)
+            item = {**self.example["plans"][0]["activities"][0], "started": True, "startedAt": "2026-10-12T10:00:00Z"}
+            body = {"planId": "example-plan", "activityId": "example", "item": item, "expectedRevision": 1}
+            self.assertEqual(self.request("PUT", "/api/activities", body)[0], 401)
+            self.assertEqual(self.request("PUT", "/api/activities", body, "viewer-token")[0], 403)
+            status, saved = self.request("PUT", "/api/activities", body, "admin-token")
+            self.assertEqual(status, 200)
+            self.assertEqual(saved["plans"][0]["activities"][0]["startedAt"], item["startedAt"])
+            self.assertEqual(self.request("PUT", "/api/activities", body, "admin-token")[0], 409)
+            body["expectedRevision"] = saved["revision"]
+            body["item"] = {**self.example["plans"][0]["activities"][0], "done": True, "progress": 100, "completedAt": "2026-10-14T10:00:00Z"}
+            status, saved = self.request("PUT", "/api/activities", body, "admin-token")
+            self.assertEqual(status, 200)
+            before = deepcopy(saved)
+            body["expectedRevision"] = saved["revision"]
+            body["item"]["completedAt"] = "2026-10-11T10:00:00Z"
+            self.assertEqual(self.request("PUT", "/api/activities", body, "admin-token")[0], 400)
+            self.assertEqual(planner_store.read(), before)
+            body["item"] = {**self.example["plans"][0]["activities"][0], "started": False}
+            status, saved = self.request("PUT", "/api/activities", body, "admin-token")
+            self.assertEqual(status, 200)
+            self.assertEqual(saved["plans"][0]["activities"][0]["progress"], 0)
+            self.assertNotIn("startedAt", saved["plans"][0]["activities"][0])
+            self.assertNotIn("completedAt", saved["plans"][0]["activities"][0])
+
     def test_unconfigured_auth_keeps_the_application_view_only(self):
         with patch("pockethive_auth.AUTH_BASE", ""):
             self.assertEqual(self.request("GET", "/health")[0], 200)

@@ -1,6 +1,6 @@
 services:
   pocketplanner:
-    image: ghcr.io/sepa79/pocketplanner:v0.2.1
+    image: ghcr.io/sepa79/pocketplanner:v0.2.2
     environment:
       POCKETHIVE_AUTH_BASE_URL: "${POCKETHIVE_AUTH_BASE_URL:-}"
       POCKETPLANNER_MCP_ALLOWED_HOSTS: "${POCKETPLANNER_MCP_ALLOWED_HOSTS:-}"
