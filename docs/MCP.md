@@ -2,7 +2,17 @@
 
 ## Connection
 
-The official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) serves Streamable HTTP at `http(s)://<planner-host>:8765/mcp`, alongside the website in the same process. No separate container, stdio bridge, database, or socket mount is needed. The transport also accepts clients using the 2025-11-25 initialization handshake; the SDK owns protocol negotiation, not project code.
+The official [MCP Java SDK](https://github.com/modelcontextprotocol/java-sdk)
+serves Streamable HTTP at `http(s)://<planner-host>:<published-port>/mcp`, alongside
+the React website in the same Java process (default container port 8765). No
+separate container, stdio bridge, database or socket mount is needed. The SDK owns
+protocol negotiation and stateless servlet framing, not project code.
+
+The seven tools use the same Java commands/store as REST, fresh request-scoped PH
+access and explicit Host/Origin and one-MiB bounds. Version 0.2.3 is qualified as
+a local Java/React release; registry publication is separate. No older published
+tag should be assumed to contain it. Test mutations only with isolated synthetic databases,
+never a working plan. Deployment acceptance is tracked separately from SDK tests.
 
 MCP initialization reports the same application version as the website's top bar and public `/api/info` endpoint. A `-dev` suffix identifies unreleased work; it is not a new published release.
 
@@ -76,22 +86,39 @@ An issue closure uses the same tool with `collection: issues`, its actual ID, `c
 7. A tool failure has MCP `isError: true`; it is not a successful text response. Read failures and validation errors leave saved state unchanged.
 8. For deployment or application updates, use the separate [HiveForge playbook](HIVEFORGE.md). Planner MCP edits data; HiveForge MCP deploys the application.
 
-## Future Rovo / PocketHive integration
+## Rovo and execution boundaries
 
 Rovo is not connected now. Later, an agent may retrieve approved evidence from a separately authenticated Rovo connector, propose scoped changes, and apply them through these same planner commands. Credential handling, evidence mapping, approval policy, and any automated synchronization require a separate explicit contract. Nothing currently polls tickets or changes plans automatically.
 
-PocketHive executions can later reference stable plan, stream and activity IDs. No scenario launch, execution association, run-status fetch or automatic progress calculation is exposed yet.
-
-The agreed [PocketHive integration design](POCKETHIVE_INTEGRATION.md) records the future run/Activity mapping, requirement JSON references and start-recording workflow with optional journal evidence. Implementation is explicitly deferred; the existing tools do not accept these future fields or authorize execution control.
+The local [PocketHive integration](POCKETHIVE_INTEGRATION.md) already supports
+catalogue selection, exact-run associations, runtime observations and Start/Stop
+through its separate authenticated HTTP/UI contract. Those operations are **not
+Planner MCP tools**. They never infer progress, Started/Done or issue resolution.
+Requirement-document references, journal evidence on Activity starts and the
+combined agent execution workflow remain deferred. Existing MCP tools do not
+accept those future fields or authorize PH execution control.
 
 ## Verification
 
-Run the Python tests from the project virtual environment. `tests/test_mcp.py` checks the actual SDK HTTP protocol and tools, identity isolation, denied mutations, conflict handling, data validation, close/reopen semantics, and Host/Origin/body-size limits. Browser regressions must use isolated databases. Real client/container smoke checks complement these tests; do not test mutations against an operational plan.
-
-For a read-only check through the official SDK client:
+Build/test React and the Java application together:
 
 ```sh
-.venv/bin/python tests/mcp_smoke.py http://127.0.0.1:8765/mcp
+bash scripts/build-java.sh
 ```
 
-For an explicitly authorized, empty QA server with working PocketHive DEV auth, add `--allow-mutations`. This creates only synthetic QA records and tests saved progress, issue closure, stale/invalid writes, and identity isolation. It refuses to mutate a nonempty workspace. Restart that QA server with the same database and run the read-only check again to verify persisted state. Do not point the mutation test at a user's working instance.
+The backend suite uses the official Java SDK client against the actual servlet,
+including the packaged JAR, and tests the same command/store boundary as REST.
+It covers discovery, real protocol handling, request identity isolation, denied
+writes, conflicts, validation, issue/lifecycle semantics and Host/Origin/body-size
+limits. Temporary synthetic SQLite files and fixture identity owners keep these
+tests independent of operational data and credentials. There is no copied Python
+MCP server or required Python smoke client.
+
+For a manual read-only check, connect a Streamable HTTP client to the intended
+`/mcp`, initialize, list tools and call `get_access`/`list_plans` without a token.
+Only test edits with explicit authorization against an empty isolated QA workspace
+and a legitimately obtained PH session; never harvest credentials from another
+tool. Use an explicit absolute temporary `TESTPLANNER_DB` for a standalone JAR,
+then restart with that same QA file to check persistence. SDK tests alone do not
+prove container storage, public ingress, actual PH journal or forwarded-browser
+acceptance; those remain separate gates.

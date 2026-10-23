@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "revision": 0,
+  "plans": [
+    {
+      "id": "example-plan",
+      "name": "Example plan",
+      "description": "Synthetic example only. Replace this sample with your own plan description.",
+      "streams": [
+        {
+          "id": "demo",
+          "name": "Example stream",
+          "description": "Replace with your own test stream."
+        }
+      ],
+      "activityTypes": [
+        {
+          "id": "basic",
+          "name": "Basic",
+          "color": "#ffc107"
+        }
+      ],
+      "activities": [
+        {
+          "id": "example",
+          "streamId": "demo",
+          "typeId": "basic",
+          "name": "Example activity",
+          "start": "2026-01-01",
+          "durationDays": 2,
+          "includeWeekends": false,
+          "progress": 0,
+          "status": "Replace this sample with your own activity.",
+          "issueIds": ["example-issue"],
+          "jiraUrl": ""
+        }
+      ],
+      "issues": [{"id": "example-issue", "title": "Example issue", "description": "Open this issue's details to mark its stream as blocked.", "scope": "STREAMS", "streamIds": ["demo"], "blocker": false, "discovered": "2026-01-01", "open": true, "descriptionIncomplete": false, "jiraUrl": ""}]
+    }
+  ]
+}

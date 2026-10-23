@@ -6,9 +6,14 @@
     planner_image: "{{ lookup('env', 'POCKETPLANNER_IMAGE') }}"
     planner_port: "{{ lookup('env', 'POCKETPLANNER_PORT') }}"
     planner_node: "{{ lookup('env', 'POCKETPLANNER_NODE') }}"
+    planner_instance_id: "{{ lookup('env', 'POCKETPLANNER_INSTANCE_ID') }}"
+    planner_ph_base: "{{ lookup('env', 'POCKETHIVE_BASE_URL') }}"
+    planner_ph_public: "{{ lookup('env', 'POCKETHIVE_PUBLIC_URL') }}"
     planner_auth_base: "{{ lookup('env', 'POCKETHIVE_AUTH_BASE_URL') }}"
+    planner_allow_remote_http: "{{ lookup('env', 'POCKETHIVE_ALLOW_REMOTE_HTTP') | default('false', true) }}"
     planner_mcp_hosts: "{{ lookup('env', 'POCKETPLANNER_MCP_ALLOWED_HOSTS') }}"
     planner_mcp_origins: "{{ lookup('env', 'POCKETPLANNER_MCP_ALLOWED_ORIGINS') }}"
+  tags: [configuration]
 
 - name: Require supported profile and explicit configuration
   ansible.builtin.assert:
@@ -17,11 +22,14 @@
       - planner_bind_root.startswith('/')
       - planner_image | length > 0
       - planner_node | length > 0
+      - planner_port is match('^[0-9]+$')
       - (planner_port | int) > 0
       - (planner_port | int) < 65536
       - planner_auth_base == '' or planner_auth_base.startswith('https://') or planner_auth_base.startswith('http://')
       - not planner_auth_base.endswith('/')
+      - (planner_allow_remote_http | string | lower) in ['true', 'false']
     fail_msg: "Set the swarm profile, image, port and pinned node explicitly. PocketHive auth is optional; when configured, use its public ingress without a trailing slash."
+  tags: [configuration]
 
 - name: Create durable database directory
   ansible.builtin.file:

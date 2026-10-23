@@ -1,23 +1,45 @@
 services:
-  testplanner:
+  pocketplanner:
     build: .
-    image: pocketplanner-local:latest
+    image: "${POCKETPLANNER_IMAGE:-pocketplanner-local:dev}"
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,exec,nosuid,nodev,size=64m,mode=1777
+    stop_grace_period: 15s
     environment:
+      BIND_ADDRESS: "0.0.0.0"
+      PORT: "8765"
+      TESTPLANNER_DB: /data/planner.sqlite3
+      POCKETPLANNER_INSTANCE_ID: "${POCKETPLANNER_INSTANCE_ID:-}"
+      POCKETHIVE_BASE_URL: "${POCKETHIVE_BASE_URL:-}"
+      POCKETHIVE_PUBLIC_URL: "${POCKETHIVE_PUBLIC_URL:-}"
       POCKETHIVE_AUTH_BASE_URL: "${POCKETHIVE_AUTH_BASE_URL:-}"
+      POCKETHIVE_ALLOW_REMOTE_HTTP: "${POCKETHIVE_ALLOW_REMOTE_HTTP:-false}"
       POCKETPLANNER_MCP_ALLOWED_HOSTS: "${POCKETPLANNER_MCP_ALLOWED_HOSTS:-}"
       POCKETPLANNER_MCP_ALLOWED_ORIGINS: "${POCKETPLANNER_MCP_ALLOWED_ORIGINS:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "127.0.0.1:8765:8765"
+      - "127.0.0.1:${POCKETPLANNER_PORT:-8765}:8765"
     volumes:
-      - planner_data:/data
+      - planner_java_data:/data
     restart: unless-stopped
+    deploy:
+      replicas: 1
+      update_config:
+        order: stop-first
+      rollback_config:
+        order: stop-first
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=3)"]
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://127.0.0.1:8765/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 30s
 
 volumes:
-  planner_data:
+  planner_java_data:

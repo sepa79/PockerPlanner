@@ -2,8 +2,21 @@ version: "3.8"
 services:
   pocketplanner:
     image: {{ planner_image | to_json }}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    tmpfs:
+      - /tmp:rw,exec,nosuid,nodev,size=64m,mode=1777
+    stop_grace_period: 15s
     environment:
+      BIND_ADDRESS: "0.0.0.0"
+      PORT: "8765"
+      TESTPLANNER_DB: /data/planner.sqlite3
+      POCKETPLANNER_INSTANCE_ID: {{ planner_instance_id | to_json }}
+      POCKETHIVE_BASE_URL: {{ planner_ph_base | to_json }}
+      POCKETHIVE_PUBLIC_URL: {{ planner_ph_public | to_json }}
       POCKETHIVE_AUTH_BASE_URL: {{ planner_auth_base | to_json }}
+      POCKETHIVE_ALLOW_REMOTE_HTTP: {{ planner_allow_remote_http | string | lower | to_json }}
       POCKETPLANNER_MCP_ALLOWED_HOSTS: {{ planner_mcp_hosts | to_json }}
       POCKETPLANNER_MCP_ALLOWED_ORIGINS: {{ planner_mcp_origins | to_json }}
     ports:
@@ -16,16 +29,19 @@ services:
         source: {{ (planner_bind_root + '/state/pocketplanner') | to_json }}
         target: /data
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=3)"]
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://127.0.0.1:8765/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 30s
     deploy:
       replicas: 1
       placement:
         constraints:
           - {{ ('node.hostname == ' + planner_node) | to_json }}
       update_config:
+        order: stop-first
+      rollback_config:
         order: stop-first
       restart_policy:
         condition: any

@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "revision": 0,
+  "plans": [
+    {
+      "id": "contract-plan",
+      "name": "Synthetic contract plan",
+      "description": "Synthetic migration fixture only; no operational test data.",
+      "deadline": "2026-01-30",
+      "streams": [
+        {
+          "id": "stream-alpha",
+          "name": "Synthetic Alpha",
+          "description": "Independent stream."
+        },
+        {
+          "id": "stream-beta",
+          "name": "Synthetic Beta",
+          "description": "Follows Alpha without rewriting authored activity dates.",
+          "dependsOn": "stream-alpha"
+        }
+      ],
+      "activityTypes": [
+        {"id": "type-minimal", "name": "Minimal", "color": "#36dfff"},
+        {"id": "type-heavy", "name": "Heavy", "color": "#b49aff"}
+      ],
+      "activities": [
+        {
+          "id": "activity-alpha-minimal",
+          "name": "Synthetic Alpha minimal",
+          "streamId": "stream-alpha",
+          "typeId": "type-minimal",
+          "start": "2026-01-05",
+          "durationDays": 3,
+          "includeWeekends": false,
+          "progress": 0,
+          "status": "Synthetic environment checks.",
+          "issueIds": ["issue-shared-blocker"],
+          "jiraUrl": ""
+        },
+        {
+          "id": "activity-alpha-heavy",
+          "name": "Synthetic Alpha heavy",
+          "streamId": "stream-alpha",
+          "typeId": "type-heavy",
+          "start": "2026-01-06",
+          "durationDays": 2,
+          "progress": 0,
+          "status": "Synthetic dependent load.",
+          "issueIds": ["issue-shared-blocker"],
+          "jiraUrl": "",
+          "dependsOn": "activity-alpha-minimal"
+        },
+        {
+          "id": "activity-beta-minimal",
+          "name": "Synthetic Beta minimal",
+          "streamId": "stream-beta",
+          "typeId": "type-minimal",
+          "start": "2026-01-10",
+          "durationDays": 1,
+          "includeWeekends": true,
+          "progress": 0,
+          "status": "Synthetic weekend-enabled load.",
+          "issueIds": ["issue-shared-blocker"],
+          "jiraUrl": ""
+        }
+      ],
+      "issues": [
+        {
+          "id": "issue-shared-blocker",
+          "title": "Synthetic shared blocker",
+          "description": "Fixture issue affecting every activity until explicitly narrowed.",
+          "scope": "ALL",
+          "streamIds": [],
+          "blocker": true,
+          "discovered": "2026-01-05",
+          "open": true,
+          "descriptionIncomplete": false,
+          "jiraUrl": ""
+        }
+      ]
+    }
+  ]
+}

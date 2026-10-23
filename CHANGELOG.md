@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+## 0.2.3 - 2026-10-23
+
+### Changed
+- Move PocketPlanner to Java 21 / Spring Boot and React / TypeScript, using the shared PocketHive UI, browser authentication and JVM identity libraries. One JAR serves UI, REST, SSE, MCP and PH adapters; SQLite retains one authoritative writer.
+- Replace the execution list with expandable Stream / Activity / run rows. Keep operator-maintained progress and Started / Done independent of PH runtime state.
+- Use a collapsible left Plan / Execution / Mixed rail with contextual menus, explicit runtime history and deduplicated run summaries.
+- Align the full and compact PocketPlanner logos with the Pocket family proportions.
+
+### Added
+- PocketHive integration with stable instance-scoped Plan / Stream / Activity references and exact historical run identities. Show linked runs in planning details and the Execution / Mixed views.
+- A swarm panel with health, workers, reported TPS and permission-scoped Start / Stop. Preserve correlation-specific outcomes, exact-run admission and explicit uncertainty without automatic command retries.
+- Shared PH device sign-in that completes in the initiating window after explicit confirmation, including a changed app port. Journal navigation obtains PH's own session and preserves the exact swarm / run without credentials in links.
+- Official Java SDK Streamable HTTP MCP through the same command, store and auth owners as REST, retaining strict body limits and Host / Origin allowlists.
+- Independent Java/React Docker, Compose and HiveForge packaging with one non-root replica, a read-only root filesystem and a persistent SQLite volume.
+
+### Fixed
+- Restore the 28-day calendar range and retain the Historical issue filter across tabs, view modes and plan selection.
+- Select a newly created plan only after a successful save; Cancel, conflicts, rejected saves and edits to existing plans leave selection unchanged.
+- Recalculate Activity timing and blocker delay immediately when issue links change in the editor. Cancel preserves canonical state and recorded blocking history.
+- Restore factual lifecycle dates, resolution dates and blocker history through explicit confirmed JSON import with the existing revision-checked transaction. Ordinary edits retain their factual-change restrictions.
+- Apply the shared PH client's explicit public HTTP permission to device sign-in and logout. Keep HTTPS / loopback defaults and require configured permission for remote HTTP.
+- Pin and verify the exact resolved shared-auth artifacts during packaging, including builds with tests skipped.
+
+### Security
+- Update Jackson, Tomcat, Apache HttpClient / HttpCore and Log4j within the current Java platform; retain non-root execution, dropped capabilities and no-new-privileges.
+- Update Vitest to 4.1.12 to address the newly reported development-tool mock-registration advisories.
+- Record exact-image vulnerability results and the applicability assessment for the two known Spring MVC advisories in docs/SECURITY_REVIEW.md. No clean-scan claim or vulnerability suppression is introduced.
+
+### Documentation
+- Document the Java/React architecture, API/MCP, shared PH authentication, JSON switch-over and independent Compose / HiveForge deployment.
+- Record the planned SUT / DataSet / DataProvider direction: shared Redis list circulation, producer inventory and operator clear / repopulate recovery. These design notes do not add checkout states, tracking, automated recovery or a PH runtime rebuild.
+- Keep future requirement-document, Rovo and data-mix controls separate from the implemented local PH integration.
+
 ## 0.2.2 - 2026-10-15
 
 ### Changed

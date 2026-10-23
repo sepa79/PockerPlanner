@@ -1,0 +1,33 @@
+{
+  "name": "pocketplanner-frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pockethive/browser-auth": "file:vendor/pockethive-browser-auth-0.0.0-81d17d85adef.tgz",
+    "@pockethive/ui": "file:vendor/pockethive-ui-0.0.0-62693417417a.tgz",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-router-dom": "7.18.4"
+  },
+  "overrides": { "vitest": "4.1.12" },
+  "devDependencies": {
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.0",
+    "@testing-library/user-event": "14.6.1",
+    "@types/node": "22.19.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.0.2",
+    "jsdom": "26.1.0",
+    "typescript": "5.8.3",
+    "vite": "8.3.4",
+    "vitest": "4.1.12"
+  }
+}

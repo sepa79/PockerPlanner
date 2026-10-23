@@ -1,6 +1,71 @@
 # Product requirements
 
-Live updates, blocker-impact previews and plan deadlines are available in v0.2.1. PocketHive run integration remains deferred under its separate [design](POCKETHIVE_INTEGRATION.md). The runtime and persisted contracts are in [ARCHITECTURE.md](ARCHITECTURE.md).
+Live updates, blocker-impact previews and plan deadlines are available. Local PocketHive run integration and row-based execution use their separate [contract](POCKETHIVE_INTEGRATION.md). The runtime and persisted contracts are in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+The local implementation uses Java 21/Spring Boot and React/TypeScript, with the
+actual shared PH UI and device-auth packages. Its Docker build passes 211 frontend
+and 615 Java tests; 10 deployment configuration checks and isolated Compose browser/
+save/recreation checks also pass. Exact PH journal handoff/authorization passes.
+Full local PH journal-data/runtime acceptance and the latest Auth/UI-only readiness
+check have separate evidence in the unification review; the latter returns 502
+for journal data while Orchestrator is absent. Desktop forwarding is not verified.
+This is not a published release or permission to move data.
+
+## Continuous platform simulation and live DataSet
+
+Agreed on 2026-10-17. PH runs continuous 24/7 traffic across the payments platform,
+including transaction entry points, clearing, notifications and other background
+work. PP owns the plan and additional control, not low-level record processing.
+Keep normal traffic running while stressing one path and observing the others.
+
+The [live DataSet model](DATAPROVIDER.md) puts several million reusable card/account
+records in Redis, partitioned by Customer and their Product Classes with explicit
+Stream eligibility. PH Data Provider swarms add records live. Executor pipelines
+take eligible records, perform transactions and pass context/outcomes to Post
+Processor for the next disposition. Providers retain their own persistent
+created-resource inventory independently of Redis and use it for repopulation,
+without creating the accounts/cards again. This is not sealed-only, read-only replay.
+
+The planned separate SUT/DataSet tool manages definitions. Select SUT, then one of
+its DataSets, a named group of Redis lists. PH/PP consume the selection, not second
+editable catalogues. Providers and Executors share the selected group; an external
+script can also create/populate it without registration through PH or the tool.
+The DataSet's Redis format metadata defines common field names, meanings and types.
+Each Scenario requires only its own subset; extra fields are allowed and remain
+in the complete record returned for the next test. See the
+[selection design](DATAPROVIDER.md#global-sut-and-dataset-selection) and
+[record contract](DATASET_LIFECYCLE_CONTRACT.md#shared-record-fields). A shared naming
+convention separates data lists from format/usage metadata. Planned PH IO records
+last successful inserts/takes per swarm as diagnostics, not current membership or
+record ownership. Future recordId-based tracking is optional and deferred.
+
+Shared data and shared mix are different. Dedicated and shared bindings/profiles
+must be explicit. Mix edits show every affected exact run and require renewed
+confirmation if configuration or membership changes. Desired mix is not observed
+traffic, and in-flight records are not flushed to force an immediate change.
+
+The [first stage](LIVE_DATASET_STAGE1.md) uses existing PH scenarios and Redis IO,
+Provider preparation, later PP observations/control and cross-stream/24-hour
+qualification. Separate-tool selection and IO observations need configuration/
+diagnostic integration, while the Redis loop needs no new record lifecycle or
+per-record identifier. This is documentation, not implementation or deployment.
+
+The [Redis circulation contract](DATASET_LIFECYCLE_CONTRACT.md) is the current
+list pop/transaction/push loop, without additional record states or a new return
+protocol. Empty lists leave generators waiting with their swarms running. Recovery
+stops affected work/publication, leaves swarm queue cleanup to the operator, clears
+the affected DataSet namespace and restores format/data from producer inventory
+before resuming. Old usage observations are discarded. Producer inventory is not
+cleared and SUT accounts/cards are not created again.
+No partial-state repair or automated queue-empty gate is required; a cleanup API
+is a possible later addition.
+
+### Execution rows
+
+Use expandable Stream → Activity → run rows with manual PP progress distinct from
+PH state. Support multiple exact runs per Activity, current runtime rows by default
+and explicit history. Mixed attaches current run references to individual tasks.
+Do not infer active phases or change %, Started/Done from runtime observations.
 
 ## Live updates across sessions
 
@@ -19,7 +84,7 @@ Updates apply to the relevant timeline, lists, dependency projections and summar
 
 ### Implementation
 
-Server-Sent Events at `/api/events` announce committed workspace revisions. Clients retrieve canonical state through the existing read API. One server observer checks the store revision every half-second, covering UI, MCP and explicit external replacements without a separate handler per write path. No bidirectional sockets or actor attribution are introduced.
+Server-Sent Events at `/api/events` announce committed workspace revisions. Clients retrieve canonical state through the existing read API. One Java revision observer checks the store revision every half-second, covering UI saves, explicit application imports and MCP commands without a separate handler per write path. No bidirectional sockets or actor attribution are introduced.
 
 The store remains the only persistence and revision authority. Observations see committed revisions only; notifications are not a second database, audit log or calculation source. Canonical revision comparisons reject old snapshots. Open editors, drags and pending saves defer refreshes without rebasing drafts; reconnects recover current state. Connection failure and queued updates have compact visible indicators.
 
@@ -70,4 +135,10 @@ The deadline stays fixed when tasks move or a what-if assumption changes. The pr
 
 Deadline is optional, edited in Plan details and accepted by the existing scoped plan MCP commands. Omission or null means no supplied target; the UI displays Not set and no deadline comparison. Existing plans are not rewritten or assigned dates. Never derive a deadline from the last Activity or overwrite one from a simulation.
 
-Local Started/Done timestamps and recorded issue blocking intervals are available in v0.2.1; requirement-document links and PocketHive run/journal integration remain deferred.
+Local Started/Done timestamps and recorded issue blocking intervals are available.
+Their persisted composition belongs to the single Java store transaction, while
+the typed frontend calendar owns forecast calculations. Local run links and
+journal navigation use the integration contract; requirement-document links and
+journal evidence attached to Activity starts remain deferred. Device sign-in uses
+the shared `pocketplanner-device` flow with PH confirmation, without a PP callback
+or manual preview-port registration.

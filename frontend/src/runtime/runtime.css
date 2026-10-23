@@ -1,0 +1,54 @@
+.pp-runtime, .pp-runtime-mixed { color: var(--text); min-width: 0; }
+.pp-runtime-grid { display: grid; grid-template-columns: minmax(10rem, 1fr) minmax(0, 2fr) 4.5rem; align-items: center; gap: .75rem; }
+.pp-runtime-options { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: 1rem; }
+.pp-runtime-options label { display: flex; align-items: center; gap: .4rem; }
+.pp-runtime-note { color: var(--muted); font-size: .85rem; }
+.pp-runtime-warning { color: var(--status-error); }
+.pp-runtime-column-head { padding: .65rem; color: var(--muted); font-size: .8rem; }
+.pp-runtime-stream { margin-bottom: .75rem; border: 1px solid var(--border); border-radius: .5rem; overflow: hidden; }
+.pp-runtime-stream-heading { background: var(--panel); padding: .6rem; }
+.pp-runtime-progress { text-align: right; font-variant-numeric: tabular-nums; }
+.pp-runtime button, .pp-runtime-run, .pp-swarm-panel button { font: inherit; color: var(--text); cursor: pointer; }
+.pp-runtime-stream-toggle, .pp-runtime-activity-name, .pp-runtime-fold { border: 0; background: transparent; padding: .4rem; text-align: left; overflow-wrap: anywhere; }
+.pp-runtime .pp-runtime-stream-toggle { font-weight: 700; }
+.pp-runtime-activity-label { display: flex; align-items: center; min-width: 0; }
+.pp-runtime-fold { flex: 0 0 2rem; }
+.pp-runtime-activity-heading { padding: .4rem .65rem .4rem 1rem; border-top: 1px solid var(--border2); }
+.pp-runtime-run-row { padding: .4rem .65rem .6rem 2rem; }
+.pp-runtime-inline { display: flex; flex-wrap: wrap; min-width: 0; gap: .4rem; }
+.pp-runtime-stream-summary { padding: .6rem; }
+.pp-runtime-run { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .6rem; max-width: 100%; min-width: 0; text-align: left; border: 1px solid var(--border); border-radius: .45rem; padding: .5rem .65rem; background: var(--panel2); }
+.pp-runtime-name { font-weight: 650; overflow-wrap: anywhere; }
+.pp-runtime-state, .pp-runtime-tps, .pp-runtime-shared { color: var(--muted); font-size: .8rem; }
+.pp-runtime-tps { font-variant-numeric: tabular-nums; }
+.pp-runtime-dot { width: .5rem; height: .5rem; flex: 0 0 .5rem; border-radius: 50%; background: var(--muted2); }
+.pp-runtime-run.running .pp-runtime-dot { background: var(--status-success); }
+.pp-runtime-run.stopped .pp-runtime-dot { background: var(--accent); }
+.pp-runtime-mixed { margin: .35rem 0 .7rem 1rem; }
+.pp-runtime-mixed > .pp-runtime-note { display: block; margin-bottom: .35rem; }
+.pp-runtime button:disabled, .pp-swarm-panel button:disabled { opacity: .55; cursor: not-allowed; }
+.pp-runtime button:focus-visible, .pp-runtime-run:focus-visible, .pp-swarm-panel button:focus-visible, .pp-swarm-panel a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pp-runtime [hidden], .pp-swarm-panel[hidden] { display: none; }
+.pp-swarm-panel { position: fixed; z-index: 40; top: var(--app-header-height); bottom: 0; right: 0; width: min(34rem, 100vw); box-sizing: border-box; display: flex; flex-direction: column; background: var(--bg); color: var(--text); border-left: 1px solid var(--border); }
+.pp-swarm-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--border); padding: .8rem 1rem; }
+.pp-swarm-heading h2 { margin: 0; min-width: 0; overflow-wrap: anywhere; font-size: 1.2rem; }
+.pp-swarm-panel button { border: 1px solid var(--border); background: var(--panel); border-radius: .4rem; padding: .5rem .8rem; }
+.pp-swarm-content { padding: 1rem; overflow: auto; min-height: 0; overflow-wrap: anywhere; }
+.pp-swarm-facts { margin: 0; }
+.pp-swarm-facts > div { display: grid; grid-template-columns: 8rem minmax(0, 1fr); gap: .75rem; padding: .45rem 0; border-bottom: 1px solid var(--border2); }
+.pp-swarm-facts dt { color: var(--muted); }
+.pp-swarm-facts dd { margin: 0; }
+.pp-swarm-workers { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 1rem; font-size: .85rem; }
+.pp-swarm-workers th, .pp-swarm-workers td { padding: .5rem .3rem; text-align: left; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.pp-swarm-workers small { display: block; color: var(--muted); }
+.pp-swarm-panel a { color: var(--accent); }
+.pp-swarm-actions { display: flex; gap: .5rem; margin: 1rem 0; }
+.pp-swarm-feedback { margin-bottom: .75rem; }
+@media (max-width: 640px) {
+  .pp-runtime-grid { grid-template-columns: minmax(0, 1fr) 3.5rem; gap: .35rem; }
+  .pp-runtime-grid > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+  .pp-runtime-grid > :nth-child(3) { grid-column: 2; grid-row: 1; }
+  .pp-runtime-column-head { display: none; }
+  .pp-runtime-run-row { padding-left: 1.3rem; }
+  .pp-swarm-facts > div { grid-template-columns: 6rem minmax(0, 1fr); }
+}

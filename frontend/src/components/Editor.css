@@ -1,0 +1,55 @@
+.pp-editor-dialog form,
+.pp-editor-dialog .pp-editor-fields,
+.pp-editor-dialog .pp-field {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pp-editor-dialog input[type='datetime-local'] {
+  min-width: 0;
+  width: 100%;
+}
+
+.pp-editor-dialog .pp-progress-controls {
+  display: grid;
+  grid-template-columns: max-content minmax(24px, 1fr) minmax(3.5rem, 4rem) max-content;
+}
+
+.pp-editor-dialog .pp-progress-controls input {
+  min-width: 0;
+  width: 100%;
+}
+
+.pp-editor-dialog .pp-duration-stepper {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.pp-editor-dialog .pp-issue-description-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.pp-editor-dialog .pp-check-list {
+  gap: 8px;
+}
+
+.pp-editor-dialog .pp-check-field,
+.pp-editor-dialog .pp-field-error,
+.pp-editor-dialog .pp-linked-runs,
+.pp-editor-dialog .pp-external-link {
+  overflow-wrap: anywhere;
+}
+
+.pp-editor-dialog .pp-field-error {
+  color: var(--status-error);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.pp-editor-dialog .pp-dialog-actions {
+  flex-wrap: wrap;
+}

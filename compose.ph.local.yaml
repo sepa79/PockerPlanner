@@ -1,0 +1,8 @@
+services:
+  pocketplanner:
+    networks: [default, pockethive]
+
+networks:
+  pockethive:
+    external: true
+    name: "${POCKETHIVE_NETWORK_NAME:?Set the existing PH Docker network name}"

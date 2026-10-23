@@ -1,0 +1,367 @@
+{
+  "description": "Language-neutral synthetic contracts. Each case starts with workspace.json in a fresh empty store. Patches use RFC 6902 add/replace/remove and RFC 6901 pointers. write_workspace patches its input from the previous canonical snapshot. expected.workspacePatch describes the complete permitted difference from that snapshot, including revision and removed fields. Empty expected patches require exact rollback. Statuses are OK or the public MCP domain error codes, not HTTP status codes. UTC now values are injected into the existing store clock; they do not come from the host clock.",
+  "workspace": "workspace.json",
+  "initialize": {
+    "now": "2026-01-05T08:00:00Z",
+    "expected": {
+      "status": "OK",
+      "workspacePatch": [{"op": "replace", "path": "/revision", "value": 1}]
+    }
+  },
+  "cases": {
+    "valid_workspace_roundtrip": [
+      {
+        "name": "Canonical save preserves all stable IDs, references, estimates and authored dates",
+        "now": "2026-01-05T08:00:00Z",
+        "operation": "write_workspace",
+        "arguments": {"patch": []},
+        "expected": {
+          "status": "OK",
+          "workspacePatch": [{"op": "replace", "path": "/revision", "value": 2}]
+        }
+      }
+    ],
+    "invalid_references_are_atomic": [
+      {
+        "name": "Missing stream",
+        "now": "2026-01-05T08:00:00Z",
+        "operation": "write_workspace",
+        "arguments": {"patch": [{"op": "replace", "path": "/plans/0/activities/0/streamId", "value": "stream-missing"}]},
+        "expected": {"status": "INVALID_INPUT", "workspacePatch": []}
+      },
+      {
+        "name": "Missing activity type",
+        "now": "2026-01-05T08:00:00Z",
+        "operation": "write_workspace",
+        "arguments": {"patch": [{"op": "replace", "path": "/plans/0/activities/0/typeId", "value": "type-missing"}]},
+        "expected": {"status": "INVALID_INPUT", "workspacePatch": []}
+      },
+      {
+        "name": "Missing linked issue",
+        "now": "2026-01-05T08:00:00Z",
+        "operation": "write_workspace",
+        "arguments": {"patch": [{"op": "replace", "path": "/plans/0/activities/0/issueIds", "value": ["issue-missing"]}]},
+        "expected": {"status": "INVALID_INPUT", "workspacePatch": []}
+      },
+      {
+        "name": "Missing activity predecessor",
+        "now": "2026-01-05T08:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "activities",
+          "item_id": "activity-alpha-heavy",
+          "changes": {"dependsOn": "activity-missing"},
+          "expected_revision": 1
+        },
+        "expected": {"status": "INVALID_INPUT", "workspacePatch": []}
+      },
+      {
+        "name": "Missing explicit issue target",
+        "now": "2026-01-05T08:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "issues",
+          "item_id": "issue-shared-blocker",
+          "changes": {"scope": "ACTIVITIES", "activityIds": ["activity-missing"]},
+          "expected_revision": 1
+        },
+        "expected": {"status": "INVALID_INPUT", "workspacePatch": []}
+      }
+    ],
+    "cross_stream_activity_dependency_is_rejected": [
+      {
+        "name": "An existing activity in another stream is not a valid activity predecessor",
+        "now": "2026-01-05T08:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "activities",
+          "item_id": "activity-alpha-minimal",
+          "changes": {"dependsOn": "activity-beta-minimal"},
+          "expected_revision": 1
+        },
+        "expected": {"status": "INVALID_INPUT", "workspacePatch": []}
+      }
+    ],
+    "activity_dependency_cycle_is_rejected": [
+      {
+        "name": "Two activities cannot depend on each other",
+        "now": "2026-01-05T08:00:00Z",
+        "operation": "write_workspace",
+        "arguments": {"patch": [{"op": "add", "path": "/plans/0/activities/0/dependsOn", "value": "activity-alpha-heavy"}]},
+        "expected": {"status": "INVALID_INPUT", "workspacePatch": []}
+      }
+    ],
+    "stream_dependency_cycle_is_rejected": [
+      {
+        "name": "Two streams cannot depend on each other",
+        "now": "2026-01-05T08:00:00Z",
+        "operation": "write_workspace",
+        "arguments": {"patch": [{"op": "add", "path": "/plans/0/streams/0/dependsOn", "value": "stream-beta"}]},
+        "expected": {"status": "INVALID_INPUT", "workspacePatch": []}
+      }
+    ],
+    "optimistic_revision_conflict": [
+      {
+        "name": "First writer changes progress without inventing a factual start",
+        "now": "2026-01-05T09:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "activities",
+          "item_id": "activity-alpha-minimal",
+          "changes": {"progress": 25},
+          "expected_revision": 1
+        },
+        "expected": {
+          "status": "OK",
+          "workspacePatch": [
+            {"op": "replace", "path": "/revision", "value": 2},
+            {"op": "replace", "path": "/plans/0/activities/0/progress", "value": 25}
+          ]
+        }
+      },
+      {
+        "name": "Stale scoped edit cannot update progress or start execution",
+        "now": "2026-01-05T10:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "activities",
+          "item_id": "activity-alpha-minimal",
+          "changes": {"progress": 50, "started": true},
+          "expected_revision": 1
+        },
+        "expected": {"status": "REVISION_CONFLICT", "workspacePatch": []}
+      },
+      {
+        "name": "Stale full-workspace save cannot overwrite the committed edit",
+        "now": "2026-01-05T10:00:00Z",
+        "operation": "write_workspace",
+        "arguments": {
+          "patch": [
+            {"op": "replace", "path": "/revision", "value": 1},
+            {"op": "replace", "path": "/plans/0/name", "value": "Rejected stale name"}
+          ]
+        },
+        "expected": {"status": "REVISION_CONFLICT", "workspacePatch": []}
+      },
+      {
+        "name": "An explicit edit with the current revision succeeds after conflicts",
+        "now": "2026-01-05T11:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "activities",
+          "item_id": "activity-alpha-minimal",
+          "changes": {"status": "Synthetic reviewed edit after a conflict."},
+          "expected_revision": 2
+        },
+        "expected": {
+          "status": "OK",
+          "workspacePatch": [
+            {"op": "replace", "path": "/revision", "value": 3},
+            {"op": "replace", "path": "/plans/0/activities/0/status", "value": "Synthetic reviewed edit after a conflict."}
+          ]
+        }
+      }
+    ],
+    "activity_unlink_narrows_all": [
+      {
+        "name": "Unlinking one activity narrows ALL while preserving all other assignments",
+        "now": "2026-01-05T09:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "activities",
+          "item_id": "activity-alpha-minimal",
+          "changes": {"issueIds": []},
+          "expected_revision": 1
+        },
+        "expected": {
+          "status": "OK",
+          "workspacePatch": [
+            {"op": "replace", "path": "/revision", "value": 2},
+            {"op": "replace", "path": "/plans/0/activities/0/issueIds", "value": []},
+            {"op": "replace", "path": "/plans/0/issues/0/scope", "value": "ACTIVITIES"},
+            {"op": "add", "path": "/plans/0/issues/0/activityIds", "value": ["activity-alpha-heavy", "activity-beta-minimal"]}
+          ]
+        }
+      },
+      {
+        "name": "A later progress-only edit does not reattach the unlinked blocker",
+        "now": "2026-01-05T10:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "activities",
+          "item_id": "activity-alpha-minimal",
+          "changes": {"progress": 20},
+          "expected_revision": 2
+        },
+        "expected": {
+          "status": "OK",
+          "workspacePatch": [
+            {"op": "replace", "path": "/revision", "value": 3},
+            {"op": "replace", "path": "/plans/0/activities/0/progress", "value": 20}
+          ]
+        }
+      }
+    ],
+    "started_done_are_reversible": [
+      {
+        "name": "Started records factual start and one observed active blocker",
+        "now": "2026-01-05T09:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "activities",
+          "item_id": "activity-alpha-minimal",
+          "changes": {"started": true},
+          "expected_revision": 1
+        },
+        "expected": {
+          "status": "OK",
+          "workspacePatch": [
+            {"op": "replace", "path": "/revision", "value": 2},
+            {"op": "add", "path": "/plans/0/activities/0/startedAt", "value": "2026-01-05T09:00:00Z"},
+            {"op": "add", "path": "/plans/0/activities/0/blockerTrackingSince", "value": "2026-01-05T09:00:00Z"},
+            {
+              "op": "add",
+              "path": "/plans/0/activities/0/blockerIntervals",
+              "value": [
+                {"issueId": "issue-shared-blocker", "title": "Synthetic shared blocker", "startedAt": "2026-01-05T09:00:00Z", "endedAt": null}
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Repeated Started preserves the recorded start and interval",
+        "now": "2026-01-05T10:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "activities",
+          "item_id": "activity-alpha-minimal",
+          "changes": {"started": true},
+          "expected_revision": 2
+        },
+        "expected": {
+          "status": "OK",
+          "workspacePatch": [{"op": "replace", "path": "/revision", "value": 3}]
+        }
+      },
+      {
+        "name": "Done records completion and closes observed blocking",
+        "now": "2026-01-06T09:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "activities",
+          "item_id": "activity-alpha-minimal",
+          "changes": {"done": true, "progress": 100},
+          "expected_revision": 3
+        },
+        "expected": {
+          "status": "OK",
+          "workspacePatch": [
+            {"op": "replace", "path": "/revision", "value": 4},
+            {"op": "replace", "path": "/plans/0/activities/0/progress", "value": 100},
+            {"op": "add", "path": "/plans/0/activities/0/completedAt", "value": "2026-01-06T09:00:00Z"},
+            {"op": "replace", "path": "/plans/0/activities/0/blockerIntervals/0/endedAt", "value": "2026-01-06T09:00:00Z"}
+          ]
+        }
+      },
+      {
+        "name": "Undo Done cannot guess the human's intended percentage",
+        "now": "2026-01-06T10:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "activities",
+          "item_id": "activity-alpha-minimal",
+          "changes": {"done": false},
+          "expected_revision": 4
+        },
+        "expected": {"status": "INVALID_INPUT", "workspacePatch": []}
+      },
+      {
+        "name": "Undo Done retains start, accepts explicit progress and resumes observed blocking",
+        "now": "2026-01-06T11:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "activities",
+          "item_id": "activity-alpha-minimal",
+          "changes": {"done": false, "progress": 40},
+          "expected_revision": 4
+        },
+        "expected": {
+          "status": "OK",
+          "workspacePatch": [
+            {"op": "replace", "path": "/revision", "value": 5},
+            {"op": "replace", "path": "/plans/0/activities/0/progress", "value": 40},
+            {"op": "remove", "path": "/plans/0/activities/0/completedAt"},
+            {
+              "op": "add",
+              "path": "/plans/0/activities/0/blockerIntervals/-",
+              "value": {"issueId": "issue-shared-blocker", "title": "Synthetic shared blocker", "startedAt": "2026-01-06T11:00:00Z", "endedAt": null}
+            }
+          ]
+        }
+      },
+      {
+        "name": "Undo Started clears execution facts but not estimates, dates, dependencies or issue scope",
+        "now": "2026-01-06T12:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "activities",
+          "item_id": "activity-alpha-minimal",
+          "changes": {"started": false},
+          "expected_revision": 5
+        },
+        "expected": {
+          "status": "OK",
+          "workspacePatch": [
+            {"op": "replace", "path": "/revision", "value": 6},
+            {"op": "replace", "path": "/plans/0/activities/0/progress", "value": 0},
+            {"op": "remove", "path": "/plans/0/activities/0/startedAt"},
+            {"op": "remove", "path": "/plans/0/activities/0/blockerTrackingSince"},
+            {"op": "remove", "path": "/plans/0/activities/0/blockerIntervals"}
+          ]
+        }
+      },
+      {
+        "name": "Starting again records a fresh start without resurrecting reset history",
+        "now": "2026-01-07T09:00:00Z",
+        "operation": "update_plan_item",
+        "arguments": {
+          "plan_id": "contract-plan",
+          "collection": "activities",
+          "item_id": "activity-alpha-minimal",
+          "changes": {"started": true},
+          "expected_revision": 6
+        },
+        "expected": {
+          "status": "OK",
+          "workspacePatch": [
+            {"op": "replace", "path": "/revision", "value": 7},
+            {"op": "add", "path": "/plans/0/activities/0/startedAt", "value": "2026-01-07T09:00:00Z"},
+            {"op": "add", "path": "/plans/0/activities/0/blockerTrackingSince", "value": "2026-01-07T09:00:00Z"},
+            {
+              "op": "add",
+              "path": "/plans/0/activities/0/blockerIntervals",
+              "value": [
+                {"issueId": "issue-shared-blocker", "title": "Synthetic shared blocker", "startedAt": "2026-01-07T09:00:00Z", "endedAt": null}
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

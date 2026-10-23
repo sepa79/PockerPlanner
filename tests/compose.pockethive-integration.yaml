@@ -1,0 +1,106 @@
+name: pp-ph-integration
+x-integration-runtime-root: &integration-runtime-root /tmp/pocketplanner-ph-integration-runtime
+services:
+  auth-service:
+    ports: !override []
+    environment:
+      POCKETHIVE_AUTH_WEB_PH_REDIRECT_URI: ${POCKETHIVE_BROWSER_URL:-http://localhost:8089}/auth/callback
+      POCKETHIVE_AUTH_OAUTH_ISSUER: ${POCKETHIVE_BROWSER_URL:-http://localhost:8089}/auth-service
+      POCKETHIVE_AUTH_SSO_COOKIE_NAME: PH_AUTH_INTEGRATION_QA
+  clickhouse:
+    ports: !override []
+    volumes: !override
+      - ph-java-qa-clickhouse:/var/lib/clickhouse
+      - ./clickhouse/init:/docker-entrypoint-initdb.d:ro
+      - ./clickhouse/clickhouse-entrypoint.sh:/opt/pockethive/clickhouse-entrypoint.sh:ro
+      - ./clickhouse/migrate-tx-outcome-v1-to-v2.sh:/opt/pockethive/migrate-tx-outcome-v1-to-v2.sh:ro
+  network-proxy-manager:
+    ports: !override []
+  postgres:
+    ports: !override []
+    volumes: !override [ph-java-qa-postgres:/var/lib/postgresql/data]
+  rabbitmq:
+    ports: !override []
+    volumes: !override
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ph-java-qa-rabbitmq:/var/lib/rabbitmq
+  artemis:
+    volumes: !override [ph-java-qa-artemis:/var/lib/artemis-instance]
+  wiremock:
+    ports: !override []
+  tcp-mock-server:
+    ports: !override []
+  tcp-mock-server-tls:
+    ports: !override []
+  scenario-manager:
+    ports: !override []
+    volumes: !override
+      - ./scenarios:/app/scenarios
+      - ./scenario-manager-service/capabilities:/app/capabilities:ro
+      - ./scenario-manager-service/network:/app/network:ro
+      - ./scenario-manager-service/sut:/app/sut:ro
+      - type: bind
+        source: *integration-runtime-root
+        target: /app/scenarios-runtime
+  toxiproxy:
+    ports: !override []
+  ui:
+    ports: !override ["127.0.0.1:8089:8088"]
+    depends_on:
+      auth-service:
+        condition: service_healthy
+  orchestrator:
+    environment:
+      POCKETHIVE_PLANNER_BASE_URL: ${POCKETHIVE_PLANNER_BASE_URL:-http://planner:8765}
+      POCKETHIVE_SCENARIOS_RUNTIME_ROOT: *integration-runtime-root
+      CONTROL_NETWORK: pp-ph-integration
+    volumes: !override
+      - /var/run/docker.sock:/var/run/docker.sock
+      - type: bind
+        source: *integration-runtime-root
+        target: /app/scenarios-runtime
+    depends_on:
+      artemis:
+        condition: service_healthy
+  planner:
+    image: ${POCKETPLANNER_IMAGE:-pocketplanner-local:dev}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,exec,nosuid,nodev,size=64m,mode=1777
+    stop_grace_period: 15s
+    environment:
+      BIND_ADDRESS: "0.0.0.0"
+      PORT: "8765"
+      TESTPLANNER_DB: /data/planner.sqlite3
+      POCKETPLANNER_INSTANCE_ID: integration-qa
+      POCKETHIVE_AUTH_BASE_URL: http://ui:8088/auth-service
+      POCKETHIVE_BASE_URL: http://ui:8088
+      POCKETHIVE_PUBLIC_URL: ${POCKETHIVE_BROWSER_URL:-http://localhost:8089}
+    ports: ["127.0.0.1:8774:8765"]
+    volumes: [planner-java-integration-data:/data]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://127.0.0.1:8765/health"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    deploy:
+      replicas: 1
+      update_config:
+        order: stop-first
+      rollback_config:
+        order: stop-first
+volumes:
+  planner-java-integration-data:
+  ph-java-qa-postgres:
+  ph-java-qa-clickhouse:
+  ph-java-qa-rabbitmq:
+  ph-java-qa-artemis:
+networks:
+  default:
+    name: pp-ph-integration
