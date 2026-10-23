@@ -293,3 +293,8 @@ resulting image; a passing test or npm audit is not a security certificate.
 [HiveForge deployment](docs/HIVEFORGE.md) owns remote lifecycle instructions.
 No lab action, operational data movement or publication is authorized by these
 local build/check instructions.
+
+## License
+
+PocketPlanner uses **GPL-3.0-or-later**, the same license as PocketHive.
+See [LICENSE](LICENSE). Third-party dependencies retain their own licenses.

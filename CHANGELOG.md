@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Documentation
+- Include the GPL-3.0 license text and declare GPL-3.0-or-later, matching PocketHive.
+
 ## 0.2.3 - 2026-10-23
 
 ### Changed
